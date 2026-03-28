@@ -1,0 +1,52 @@
+{
+  "scopeName": "source.simple-poc",
+  "patterns": [
+    {
+      "include": "#keyword"
+    },
+    {
+      "include": "#number"
+    },
+    {
+      "include": "#string"
+    }
+  ],
+  "repository": {
+    "keyword": {
+      "patterns": [
+        {
+          "match": "\\b(let|const|fn)\\b",
+          "name": "keyword.control.simple-poc"
+        }
+      ]
+    },
+    "number": {
+      "patterns": [
+        {
+          "match": "\\b\\d+\\b",
+          "name": "constant.numeric.simple-poc"
+        }
+      ]
+    },
+    "string": {
+      "patterns": [
+        {
+          "begin": "\"",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.begin.simple-poc"
+            }
+          },
+          "end": "\"",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.simple-poc"
+            }
+          },
+          "name": "string.quoted.double.simple-poc",
+          "patterns": []
+        }
+      ]
+    }
+  }
+}

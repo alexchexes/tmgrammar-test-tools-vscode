@@ -1,0 +1,4 @@
+// SYNTAX TEST "source.simple-poc" "fixture for the caret assertion command"
+
+let value = 42
+const answer = "ok"

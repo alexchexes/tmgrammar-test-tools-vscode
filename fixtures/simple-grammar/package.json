@@ -1,0 +1,21 @@
+{
+  "name": "simple-grammar-fixture",
+  "version": "0.0.0",
+  "contributes": {
+    "languages": [
+      {
+        "id": "simple-poc",
+        "extensions": [
+          ".simple-poc"
+        ]
+      }
+    ],
+    "grammars": [
+      {
+        "language": "simple-poc",
+        "scopeName": "source.simple-poc",
+        "path": "./syntaxes/simple-poc.tmLanguage.json"
+      }
+    ]
+  }
+}

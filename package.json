@@ -1,0 +1,50 @@
+{
+  "name": "vscode-tmgrammar-test-tools",
+  "displayName": "TM Grammar Test Tools",
+  "description": "POC VS Code extension for inserting caret assertions into TextMate syntax tests.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:tmGrammarTestTools.insertCaretAssertions"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "tmGrammarTestTools.insertCaretAssertions",
+        "title": "TM Grammar Test Tools: Insert Caret Assertions For Current Line"
+      }
+    ],
+    "configuration": {
+      "title": "TM Grammar Test Tools",
+      "properties": {
+        "tmGrammarTestTools.configPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional path to the grammar package.json used to load TextMate grammars. Relative paths resolve from the active document's workspace folder."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -w -p ./",
+    "vscode:prepublish": "npm run compile"
+  },
+  "dependencies": {
+    "vscode-oniguruma": "^1.5.1",
+    "vscode-textmate": "^7.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.5.4"
+  }
+}
