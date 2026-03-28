@@ -21,6 +21,17 @@ interface PackageJsonShape {
 }
 
 export async function resolveConfigPath(document: vscode.TextDocument): Promise<string> {
+  const configPath = await tryResolveConfigPath(document)
+  if (configPath) {
+    return configPath
+  }
+
+  throw new Error(
+    'Could not find a package.json with contributes.grammars above the active file. Set tmGrammarTestTools.configPath to point at the grammar package.json.'
+  )
+}
+
+export async function tryResolveConfigPath(document: vscode.TextDocument): Promise<string | undefined> {
   const configuration = vscode.workspace.getConfiguration('tmGrammarTestTools', document.uri)
   const configuredPath = configuration.get<string>('configPath')?.trim()
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri)
@@ -53,10 +64,7 @@ export async function resolveConfigPath(document: vscode.TextDocument): Promise<
 
     currentDirectory = path.dirname(currentDirectory)
   }
-
-  throw new Error(
-    'Could not find a package.json with contributes.grammars above the active file. Set tmGrammarTestTools.configPath to point at the grammar package.json.'
-  )
+  return undefined
 }
 
 export async function loadGrammarContributions(configPath: string): Promise<GrammarContribution[]> {
@@ -107,6 +115,36 @@ async function assertGrammarConfig(configPath: string): Promise<void> {
 async function readPackageJson(configPath: string): Promise<PackageJsonShape> {
   const content = await fs.readFile(configPath, 'utf8')
   return JSON.parse(content) as PackageJsonShape
+}
+
+export async function resolveProjectRoot(document: vscode.TextDocument): Promise<string> {
+  let currentDirectory = path.dirname(document.uri.fsPath)
+  const fileSystemRoot = path.parse(currentDirectory).root
+
+  while (true) {
+    if ((await pathExists(path.join(currentDirectory, 'package.json'))) || (await pathExists(path.join(currentDirectory, '.git')))) {
+      return currentDirectory
+    }
+
+    if (currentDirectory === fileSystemRoot) {
+      return path.dirname(document.uri.fsPath)
+    }
+
+    currentDirectory = path.dirname(currentDirectory)
+  }
+}
+
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await fs.access(targetPath)
+    return true
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return false
+    }
+
+    throw error
+  }
 }
 
 function isMissingFileError(error: unknown): error is NodeJS.ErrnoException {

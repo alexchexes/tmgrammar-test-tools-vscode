@@ -1,17 +1,21 @@
 import * as vscode from 'vscode'
-import { loadGrammarContributions, resolveConfigPath } from './grammarConfig'
+import { loadGrammarContributions, tryResolveConfigPath } from './grammarConfig'
+import { loadProviderGrammarContributions } from './grammarProvider'
 import { loadInstalledGrammarContributions } from './installedGrammars'
+import { logError, logInfo, registerLogger } from './log'
 import { renderAssertionBlock } from './render'
 import { collectSourceLines, findAssertionBlock, findTargetSourceLine, parseHeaderLine } from './syntaxTest'
 import { tokenizeSourceLine } from './textmate'
 
 export function activate(context: vscode.ExtensionContext): void {
+  registerLogger(context)
   context.subscriptions.push(
     vscode.commands.registerTextEditorCommand('tmGrammarTestTools.insertCaretAssertions', async (editor) => {
       try {
         await insertCaretAssertions(editor)
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
+        logError(message)
         void vscode.window.showErrorMessage(message)
       }
     })
@@ -22,12 +26,16 @@ export function deactivate(): void {}
 
 async function insertCaretAssertions(editor: vscode.TextEditor): Promise<void> {
   const document = editor.document
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri)
+  logInfo(`Insert assertions requested for ${document.uri.fsPath}`)
+  logInfo(`Workspace folder: ${workspaceFolder?.uri.fsPath ?? '<none>'}`)
 
   if (document.lineCount === 0) {
     throw new Error('Expected a syntax test file with a header line.')
   }
 
   const header = parseHeaderLine(document.lineAt(0).text)
+  logInfo(`Parsed syntax test header with scope ${header.scopeName}`)
   const sourceLines = collectSourceLines(document, header.commentToken)
 
   if (sourceLines.length === 0) {
@@ -40,9 +48,13 @@ async function insertCaretAssertions(editor: vscode.TextEditor): Promise<void> {
     throw new Error('Place the cursor on a source line or on its existing assertion block.')
   }
 
-  const configPath = await resolveConfigPath(document)
-  const localGrammars = await loadGrammarContributions(configPath)
-  const grammars = [...loadInstalledGrammarContributions(), ...localGrammars]
+  const localGrammars = await loadOptionalLocalGrammarContributions(document)
+  const providerGrammars = await loadProviderGrammarContributions(document)
+  const installedGrammars = loadInstalledGrammarContributions()
+  const grammars = [...installedGrammars, ...localGrammars, ...providerGrammars]
+  logInfo(
+    `Grammar sources: installed=${installedGrammars.length}, local=${localGrammars.length}, provider=${providerGrammars.length}`
+  )
   const targetSourceIndex = sourceLines.findIndex((line) => line.documentLine === targetSourceLine.documentLine)
   const tokens = await tokenizeSourceLine(grammars, header.scopeName, sourceLines, targetSourceIndex)
   const assertionLines = renderAssertionBlock(header.commentToken, targetSourceLine.text, tokens)
@@ -64,6 +76,17 @@ async function insertCaretAssertions(editor: vscode.TextEditor): Promise<void> {
 
   const action = hasExistingBlock ? (assertionLines.length === 0 ? 'Removed' : 'Replaced') : 'Inserted'
   vscode.window.setStatusBarMessage(`${action} caret assertions for line ${targetSourceLine.documentLine + 1}.`, 3000)
+}
+
+async function loadOptionalLocalGrammarContributions(document: vscode.TextDocument) {
+  const configPath = await tryResolveConfigPath(document)
+  if (!configPath) {
+    logInfo('No local package.json grammar config found for the active document.')
+    return []
+  }
+
+  logInfo(`Using local grammar config: ${configPath}`)
+  return loadGrammarContributions(configPath)
 }
 
 function applyAssertionEdit(
