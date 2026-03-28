@@ -49,6 +49,12 @@
           "minimum": 1000,
           "scope": "resource",
           "description": "Timeout in milliseconds for tmGrammarTestTools.grammarProvider.command."
+        },
+        "tmGrammarTestTools.compactRanges": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "When enabled, merge disjoint caret ranges that share the exact same full scope list into a single assertion line."
         }
       }
     }

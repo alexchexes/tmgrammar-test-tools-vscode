@@ -26,6 +26,7 @@ Proof-of-concept VS Code extension for generating caret assertions in TextMate s
 - If your syntax test is not inside the grammar extension repo, set `tmGrammarTestTools.configPath` to the relevant `package.json`.
 - This is important for injection-grammar repos: the local repo can contribute the injection grammar while VS Code supplies the base language grammar, such as `source.js`.
 - If `tmGrammarTestTools.grammarProvider.command` is set, the extension runs it on each invocation and uses the returned grammar files for the current dump.
+- `tmGrammarTestTools.compactRanges` defaults to `true` and merges disjoint caret ranges when they share the exact same full scope list.
 
 ## Grammar Provider Hook
 

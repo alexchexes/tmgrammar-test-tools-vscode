@@ -27,8 +27,11 @@ export function deactivate(): void {}
 async function insertCaretAssertions(editor: vscode.TextEditor): Promise<void> {
   const document = editor.document
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri)
+  const configuration = vscode.workspace.getConfiguration('tmGrammarTestTools', document.uri)
+  const compactRanges = configuration.get<boolean>('compactRanges') ?? true
   logInfo(`Insert assertions requested for ${document.uri.fsPath}`)
   logInfo(`Workspace folder: ${workspaceFolder?.uri.fsPath ?? '<none>'}`)
+  logInfo(`Render options: compactRanges=${compactRanges}`)
 
   if (document.lineCount === 0) {
     throw new Error('Expected a syntax test file with a header line.')
@@ -57,7 +60,9 @@ async function insertCaretAssertions(editor: vscode.TextEditor): Promise<void> {
   )
   const targetSourceIndex = sourceLines.findIndex((line) => line.documentLine === targetSourceLine.documentLine)
   const tokens = await tokenizeSourceLine(grammars, header.scopeName, sourceLines, targetSourceIndex)
-  const assertionLines = renderAssertionBlock(header.commentToken, targetSourceLine.text, tokens)
+  const assertionLines = renderAssertionBlock(header.commentToken, targetSourceLine.text, tokens, {
+    compactRanges
+  })
   const assertionBlock = findAssertionBlock(document, targetSourceLine.documentLine, header.commentToken)
   const hasExistingBlock = assertionBlock.endLineExclusive > assertionBlock.startLine
 
