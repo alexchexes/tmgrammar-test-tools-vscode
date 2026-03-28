@@ -12,7 +12,9 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:tmGrammarTestTools.insertCaretAssertions"
+    "onCommand:tmGrammarTestTools.insertCaretAssertions",
+    "onCommand:tmGrammarTestTools.insertCaretAssertionsFull",
+    "onCommand:tmGrammarTestTools.insertCaretAssertionsMinimal"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -20,6 +22,14 @@
       {
         "command": "tmGrammarTestTools.insertCaretAssertions",
         "title": "TM Grammar Test Tools: Insert Caret Assertions For Current Line"
+      },
+      {
+        "command": "tmGrammarTestTools.insertCaretAssertionsFull",
+        "title": "TM Grammar Test Tools: Insert Caret Assertions For Current Line (Full)"
+      },
+      {
+        "command": "tmGrammarTestTools.insertCaretAssertionsMinimal",
+        "title": "TM Grammar Test Tools: Insert Caret Assertions For Current Line (Minimal)"
       }
     ],
     "configuration": {
@@ -72,7 +82,7 @@
   "scripts": {
     "compile": "tsc -p ./",
     "compile:test": "tsc -p ./tsconfig.test.json",
-    "test": "npm run compile:test && node --test out-test/test/render.test.js",
+    "test": "npm run compile:test && node --test out-test/test/*.test.js",
     "watch": "tsc -w -p ./",
     "vscode:prepublish": "npm run compile"
   },

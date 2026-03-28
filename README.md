@@ -10,7 +10,10 @@ Proof-of-concept VS Code extension for generating caret assertions in TextMate s
    <comment token> SYNTAX TEST "<language scope>" "optional description"
    ```
 
-2. Run `TM Grammar Test Tools: Insert Caret Assertions For Current Line`.
+2. Run one of:
+   - `TM Grammar Test Tools: Insert Caret Assertions For Current Line`
+   - `TM Grammar Test Tools: Insert Caret Assertions For Current Line (Full)`
+   - `TM Grammar Test Tools: Insert Caret Assertions For Current Line (Minimal)`
 3. The extension:
    - parses the header
    - finds the nearest `package.json` above the active file that contributes grammars
@@ -26,7 +29,8 @@ Proof-of-concept VS Code extension for generating caret assertions in TextMate s
 - If your syntax test is not inside the grammar extension repo, set `tmGrammarTestTools.configPath` to the relevant `package.json`.
 - This is important for injection-grammar repos: the local repo can contribute the injection grammar while VS Code supplies the base language grammar, such as `source.js`.
 - If `tmGrammarTestTools.grammarProvider.command` is set, the extension runs it on each invocation and uses the returned grammar files for the current dump.
-- `tmGrammarTestTools.scopeMode` can be `full` or `minimal`. `minimal` drops the header scope only when every token shares it and there is at least one more specific scope to show, then emits broader shared scopes once before narrower child scopes.
+- `tmGrammarTestTools.scopeMode` can be `full` or `minimal`. The generic command uses that setting. The explicit `Full` and `Minimal` commands override it for that invocation.
+- `minimal` drops the header scope only when every token shares it and there is at least one more specific scope to show, then emits broader shared scopes once before narrower child scopes.
 - `tmGrammarTestTools.compactRanges` defaults to `true` and merges disjoint caret ranges when they share the same rendered scope list and the tmgrammar assertion syntax can represent the merge.
 
 ## Grammar Provider Hook

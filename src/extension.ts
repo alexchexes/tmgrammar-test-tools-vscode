@@ -4,32 +4,37 @@ import { loadProviderGrammarContributions } from './grammarProvider'
 import { loadInstalledGrammarContributions } from './installedGrammars'
 import { logError, logInfo, registerLogger } from './log'
 import { renderAssertionBlock, ScopeMode } from './render'
+import { resolveScopeMode } from './scopeMode'
 import { collectSourceLines, findAssertionBlock, findTargetSourceLine, parseHeaderLine } from './syntaxTest'
 import { tokenizeSourceLine } from './textmate'
 
 export function activate(context: vscode.ExtensionContext): void {
   registerLogger(context)
-  context.subscriptions.push(
-    vscode.commands.registerTextEditorCommand('tmGrammarTestTools.insertCaretAssertions', async (editor) => {
-      try {
-        await insertCaretAssertions(editor)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        logError(message)
-        void vscode.window.showErrorMessage(message)
-      }
-    })
-  )
+  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertCaretAssertions'))
+  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertCaretAssertionsFull', 'full'))
+  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertCaretAssertionsMinimal', 'minimal'))
 }
 
 export function deactivate(): void {}
 
-async function insertCaretAssertions(editor: vscode.TextEditor): Promise<void> {
+function registerInsertCommand(commandId: string, scopeModeOverride?: ScopeMode): vscode.Disposable {
+  return vscode.commands.registerTextEditorCommand(commandId, async (editor) => {
+    try {
+      await insertCaretAssertions(editor, scopeModeOverride)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      logError(message)
+      void vscode.window.showErrorMessage(message)
+    }
+  })
+}
+
+async function insertCaretAssertions(editor: vscode.TextEditor, scopeModeOverride?: ScopeMode): Promise<void> {
   const document = editor.document
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri)
   const configuration = vscode.workspace.getConfiguration('tmGrammarTestTools', document.uri)
   const compactRanges = configuration.get<boolean>('compactRanges') ?? true
-  const scopeMode = normalizeScopeMode(configuration.get<string>('scopeMode'))
+  const scopeMode = resolveScopeMode(configuration.get<string>('scopeMode'), scopeModeOverride)
   logInfo(`Insert assertions requested for ${document.uri.fsPath}`)
   logInfo(`Workspace folder: ${workspaceFolder?.uri.fsPath ?? '<none>'}`)
   logInfo(`Render options: scopeMode=${scopeMode}, compactRanges=${compactRanges}`)
@@ -95,10 +100,6 @@ async function loadOptionalLocalGrammarContributions(document: vscode.TextDocume
 
   logInfo(`Using local grammar config: ${configPath}`)
   return loadGrammarContributions(configPath)
-}
-
-function normalizeScopeMode(scopeMode: string | undefined): ScopeMode {
-  return scopeMode === 'minimal' ? 'minimal' : 'full'
 }
 
 function applyAssertionEdit(
