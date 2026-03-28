@@ -56,6 +56,12 @@ Provider command output can be either:
 
 For example, `language-php` can use its existing export script so the command sees the current state of `grammars/php.cson` while still loading the extra dependent grammars needed by the test harness.
 
+## Testing
+
+Run `npm test`.
+
+The current suite covers renderer compaction/minimal-mode behavior and round-trips generated fixture assertions through `vscode-tmgrammar-test`.
+
 ## Fixture
 
 This repo also includes a minimal fixture grammar under `fixtures/simple-grammar`.

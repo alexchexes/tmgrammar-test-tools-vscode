@@ -1,4 +1,5 @@
 /tmp
 /node_modules
 /out
+/out-test
 /.vscode-test
