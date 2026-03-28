@@ -3,7 +3,7 @@ import { loadGrammarContributions, tryResolveConfigPath } from './grammarConfig'
 import { loadProviderGrammarContributions } from './grammarProvider'
 import { loadInstalledGrammarContributions } from './installedGrammars'
 import { logError, logInfo, registerLogger } from './log'
-import { renderAssertionBlock } from './render'
+import { renderAssertionBlock, ScopeMode } from './render'
 import { collectSourceLines, findAssertionBlock, findTargetSourceLine, parseHeaderLine } from './syntaxTest'
 import { tokenizeSourceLine } from './textmate'
 
@@ -29,9 +29,10 @@ async function insertCaretAssertions(editor: vscode.TextEditor): Promise<void> {
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri)
   const configuration = vscode.workspace.getConfiguration('tmGrammarTestTools', document.uri)
   const compactRanges = configuration.get<boolean>('compactRanges') ?? true
+  const scopeMode = normalizeScopeMode(configuration.get<string>('scopeMode'))
   logInfo(`Insert assertions requested for ${document.uri.fsPath}`)
   logInfo(`Workspace folder: ${workspaceFolder?.uri.fsPath ?? '<none>'}`)
-  logInfo(`Render options: compactRanges=${compactRanges}`)
+  logInfo(`Render options: scopeMode=${scopeMode}, compactRanges=${compactRanges}`)
 
   if (document.lineCount === 0) {
     throw new Error('Expected a syntax test file with a header line.')
@@ -61,7 +62,9 @@ async function insertCaretAssertions(editor: vscode.TextEditor): Promise<void> {
   const targetSourceIndex = sourceLines.findIndex((line) => line.documentLine === targetSourceLine.documentLine)
   const tokens = await tokenizeSourceLine(grammars, header.scopeName, sourceLines, targetSourceIndex)
   const assertionLines = renderAssertionBlock(header.commentToken, targetSourceLine.text, tokens, {
-    compactRanges
+    compactRanges,
+    headerScope: header.scopeName,
+    scopeMode
   })
   const assertionBlock = findAssertionBlock(document, targetSourceLine.documentLine, header.commentToken)
   const hasExistingBlock = assertionBlock.endLineExclusive > assertionBlock.startLine
@@ -92,6 +95,10 @@ async function loadOptionalLocalGrammarContributions(document: vscode.TextDocume
 
   logInfo(`Using local grammar config: ${configPath}`)
   return loadGrammarContributions(configPath)
+}
+
+function normalizeScopeMode(scopeMode: string | undefined): ScopeMode {
+  return scopeMode === 'minimal' ? 'minimal' : 'full'
 }
 
 function applyAssertionEdit(

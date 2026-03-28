@@ -50,11 +50,21 @@
           "scope": "resource",
           "description": "Timeout in milliseconds for tmGrammarTestTools.grammarProvider.command."
         },
+        "tmGrammarTestTools.scopeMode": {
+          "type": "string",
+          "enum": [
+            "full",
+            "minimal"
+          ],
+          "default": "full",
+          "scope": "resource",
+          "description": "Controls whether generated assertions use exact full scope stacks or a reduced minimal form."
+        },
         "tmGrammarTestTools.compactRanges": {
           "type": "boolean",
           "default": true,
           "scope": "resource",
-          "description": "When enabled, merge disjoint caret ranges that share the exact same full scope list into a single assertion line."
+          "description": "When enabled, merge disjoint caret ranges that share the same rendered scope list into a single assertion line when the syntax allows it."
         }
       }
     }
