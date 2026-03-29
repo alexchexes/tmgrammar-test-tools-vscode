@@ -111,6 +111,7 @@
     "compile": "tsc -p ./",
     "compile:test": "tsc -p ./tsconfig.test.json",
     "dump-assertions": "npm run compile && node out/cli.js",
+    "package:vsix": "npx @vscode/vsce package",
     "test": "npm run compile:test && node --test out-test/test/*.test.js",
     "watch": "tsc -w -p ./",
     "vscode:prepublish": "npm run compile"
