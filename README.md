@@ -50,22 +50,14 @@ Proof-of-concept VS Code extension for generating caret assertions in TextMate s
 
 ## Grammar Provider Hook
 
-You can configure a repo-specific grammar provider in settings:
+You can configure a grammar provider via workspace, workspace-folder, or global `settings.json`. That is useful when you work with a grammar that is not contributed directly via a nearby `package.json`. For example:
 
-```json
+```jsonc
 {
-  "tmGrammarTestTools.grammarProvider.command": "node utils/exportPhpGrammar.js",
-  "tmGrammarTestTools.grammarProvider.cwd": "${projectRoot}"
+  "tmGrammarTestTools.grammarProvider.command": "node exportMyCsonGrammar.js",
+  "tmGrammarTestTools.grammarProvider.cwd": "${workspaceFolder}" // optional
 }
 ```
-
-Supported variables in the command and cwd:
-
-- `${projectRoot}`
-- `${workspaceFolder}`
-- `${file}`
-- `${fileDirname}`
-- `${fileBasename}`
 
 Provider command output can be either:
 
@@ -73,7 +65,29 @@ Provider command output can be either:
 - a JSON array of paths or grammar objects
 - a JSON object with a `grammars` array
 
-For example, `language-php` can use its existing export script so the command sees the current state of `grammars/php.cson` while still loading the extra dependent grammars needed by the test harness.
+Provider grammars are merged after installed and local package.json grammars, so exact scope-name matches override earlier sources, while injection grammars remain additive.
+
+Supported variables in `tmGrammarTestTools.grammarProvider.command`:
+
+- `${workspaceFolder}`
+- `${projectRoot}`
+- `${file}`
+- `${fileDirname}`
+- `${fileBasename}`
+
+Supported variables in `tmGrammarTestTools.grammarProvider.cwd`:
+
+- `${workspaceFolder}`
+- `${projectRoot}`
+- `${fileDirname}`
+
+If `${workspaceFolder}` is used in `command` or `cwd`, the active file must belong to a workspace folder.
+
+`${projectRoot}` resolves to the nearest ancestor of the active file that contains `package.json` or `.git`. If neither is found, it resolves to the directory containing the file.
+
+If `tmGrammarTestTools.grammarProvider.cwd` is empty or unset, the extension runs the provider command from the active document's workspace folder and falls back to `${projectRoot}` when the file is outside the workspace.
+
+`command` and `cwd` are resolved independently, so you can specify one in the workspace's `.vscode/settings.json` and the other in global `settings.json`, but in most cases it is reasonable to keep them together in the same settings file.
 
 ## Testing
 

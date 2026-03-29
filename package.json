@@ -56,9 +56,9 @@
         },
         "tmGrammarTestTools.grammarProvider.cwd": {
           "type": "string",
-          "default": "${projectRoot}",
+          "default": "",
           "scope": "resource",
-          "description": "Working directory for tmGrammarTestTools.grammarProvider.command. Supports ${projectRoot}, ${workspaceFolder}, ${file}, ${fileDirname}, and ${fileBasename}."
+          "description": "Working directory used when invoking tmGrammarTestTools.grammarProvider.command. Leave empty to use the active document's workspace folder and fall back to project root when the file is outside the workspace. If explicitly set to ${workspaceFolder}, the active file must belong to a workspace folder. Supports ${projectRoot}, ${workspaceFolder}, and ${fileDirname}."
         },
         "tmGrammarTestTools.grammarProvider.timeoutMs": {
           "type": "number",

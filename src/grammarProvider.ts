@@ -5,6 +5,11 @@ import { promisify } from 'util'
 import * as vscode from 'vscode'
 import { GrammarContribution, resolveProjectRoot } from './grammarConfig'
 import { logInfo } from './log'
+import {
+  ProviderTemplateContext,
+  resolveCommandTemplate as resolveCommandTemplateFromContext,
+  resolveProviderCwdTemplate as resolveProviderCwdTemplateFromContext
+} from './providerTemplates'
 
 const execAsync = promisify(exec)
 
@@ -29,12 +34,9 @@ export async function loadProviderGrammarContributions(document: vscode.TextDocu
   }
 
   const projectRoot = await resolveProjectRoot(document)
-  const resolvedCommand = resolveTemplate(configuredCommand, document, projectRoot)
-  const resolvedCwd = resolveTemplate(
-    configuration.get<string>('grammarProvider.cwd')?.trim() || '${projectRoot}',
-    document,
-    projectRoot
-  )
+  const configuredCwd = configuration.get<string>('grammarProvider.cwd')?.trim()
+  const resolvedCommand = resolveCommandTemplate(configuredCommand, document, projectRoot)
+  const resolvedCwd = resolveProviderCwd(document, projectRoot, configuredCwd)
   const timeoutMs = configuration.get<number>('grammarProvider.timeoutMs') ?? 30000
 
   logInfo(`Resolved project root: ${projectRoot}`)
@@ -172,24 +174,28 @@ async function assertDirectoryExists(directoryPath: string): Promise<void> {
   }
 }
 
-function resolveTemplate(template: string, document: vscode.TextDocument, projectRoot: string): string {
-  const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
-  const replacements: Record<string, string | undefined> = {
-    '${projectRoot}': projectRoot,
-    '${workspaceFolder}': workspaceFolder,
-    '${file}': document.uri.fsPath,
-    '${fileDirname}': path.dirname(document.uri.fsPath),
-    '${fileBasename}': path.basename(document.uri.fsPath)
-  }
+export function resolveCommandTemplate(
+  template: string,
+  document: vscode.TextDocument,
+  projectRoot: string
+): string {
+  return resolveCommandTemplateFromContext(template, toProviderTemplateContext(document, projectRoot))
+}
 
-  let resolvedTemplate = template
-  for (const [token, value] of Object.entries(replacements)) {
-    if (value) {
-      resolvedTemplate = resolvedTemplate.split(token).join(value)
-    }
-  }
+export function resolveProviderCwd(
+  document: vscode.TextDocument,
+  projectRoot: string,
+  configuredCwd?: string
+): string {
+  return resolveProviderCwdTemplateFromContext(toProviderTemplateContext(document, projectRoot), configuredCwd)
+}
 
-  return resolvedTemplate
+function toProviderTemplateContext(document: vscode.TextDocument, projectRoot: string): ProviderTemplateContext {
+  return {
+    filePath: document.uri.fsPath,
+    projectRoot,
+    workspaceFolder: vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
+  }
 }
 
 function buildProviderError(error: unknown, command: string, cwd: string): Error {
