@@ -100,10 +100,19 @@ The current suite covers renderer compaction/minimal-mode behavior, selection ta
 
 For scripted use outside VS Code:
 
-```shell
+```bash
+# From this repo:
 npm run dump-assertions -- --file <syntax-test-file> --line <lineNumber>
 # or
 npm run dump-assertions -- --file <syntax-test-file> --range <startLine:startColumn-endLine:endColumn>
+
+# From outside this repo:
+# first compile from this repo:
+cd <this-repo-root> && npm run compile
+
+# then invoke it from anywhere:
+cd <anywhere>
+node <this-repo-root>/out/cli.js --file <syntax-test-file> <...>
 ```
 
 Required:
@@ -119,23 +128,38 @@ Targets:
 
 Grammar loading:
 
-- `--config <package.json>` loads grammars from a grammar package manifest.
+- `--config <package.json>` loads grammars from a grammar package manifest. If you omit it, the CLI searches upward from `--file` for a `package.json` with `contributes.grammars`.
 - `--provider-command <command>` runs a grammar provider command.
-- `--provider-cwd <cwd>` sets the provider working directory.
+- `--provider-cwd <cwd>` sets the provider working directory. If omitted, the CLI runs the provider from `${projectRoot}` for `--file`.
+
 - `--provider-timeout-ms <ms>` sets the provider timeout.
 
 Render options:
 
 - `--scope-mode <full|minimal>` controls full vs minimal rendering.
-- `--json` prints structured JSON output. This is the default.
-- `--plain` prints only the generated assertion lines.
 - `--compact-ranges` enables disjoint caret compaction.
 - `--no-compact-ranges` disables disjoint caret compaction.
+
+Output options:
+
+- `--json` prints structured JSON output. This is the default.
+- `--plain` prints only the generated assertion lines.
 
 Notes:
 
 - The CLI prints to stdout. It does not modify the file.
 - It currently loads grammars only from local `package.json` and/or `--provider-command`. It does not auto-load installed VS Code grammars.
+
+Full usage example:
+```bash
+node <this-repo-root>/out/cli.js \
+  --file /grammar-package/path/to/test.php \
+  --provider-command "node utils/exportCsonGrammar.js" \
+  --provider-cwd /grammar-package \
+  --line 3 \
+  --scope-mode minimal \
+  --plain
+```
 
 ## Fixture
 
