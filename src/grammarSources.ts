@@ -1,4 +1,4 @@
-import { GrammarContribution } from './grammarConfig'
+import { GrammarContribution } from './grammarTypes'
 
 export interface GrammarSourceSet {
   grammars: readonly GrammarContribution[]

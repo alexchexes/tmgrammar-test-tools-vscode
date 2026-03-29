@@ -1,7 +1,7 @@
-import { GrammarContribution } from './grammarConfig'
+import { GrammarContribution } from './grammarTypes'
 import { RenderOptions, ScopeMode, renderAssertionBlock } from './render'
 import { CharacterRange, SelectionRangeTarget, clipTokensToRanges, resolveSelectionRanges } from './selectionTargets'
-import { SourceLine } from './syntaxTest'
+import { SourceLine } from './syntaxTestCore'
 import { tokenizeSourceLine } from './textmate'
 
 export interface AssertionGenerationContext {

@@ -1,6 +1,6 @@
 import * as path from 'path'
 import * as vscode from 'vscode'
-import { GrammarContribution } from './grammarConfig'
+import { GrammarContribution } from './grammarTypes'
 
 interface ExtensionPackageJsonShape {
   contributes?: {

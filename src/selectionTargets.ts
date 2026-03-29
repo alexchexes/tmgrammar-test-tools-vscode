@@ -1,5 +1,5 @@
 import type * as tm from 'vscode-textmate'
-import { findTargetSourceLine, SourceLine } from './syntaxTest'
+import { findTargetSourceLine, SourceLine } from './syntaxTestCore'
 
 export interface CharacterRange {
   startIndex: number

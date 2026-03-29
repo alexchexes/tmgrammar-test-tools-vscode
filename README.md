@@ -96,6 +96,47 @@ Run `npm test`.
 
 The current suite covers renderer compaction/minimal-mode behavior, selection targeting/clipping, and round-trips generated fixture assertions through `vscode-tmgrammar-test`.
 
+## CLI Helper
+
+For scripted use outside VS Code:
+
+```shell
+npm run dump-assertions -- --file <syntax-test-file> --line <lineNumber>
+# or
+npm run dump-assertions -- --file <syntax-test-file> --range <startLine:startColumn-endLine:endColumn>
+```
+
+Required:
+
+- `--file <syntax-test-file>` points to the syntax test file.
+- At least one target is required: `--line` and/or `--range`.
+
+Targets:
+
+- `--line <lineNumber>` generates assertions for a 1-based document line containing source text. You can repeat it.
+- `--range <startLine:startColumn-endLine:endColumn>` generates assertions for a selected range using 1-based inclusive columns. You can repeat it.
+- You can specify both at the same time.
+
+Grammar loading:
+
+- `--config <package.json>` loads grammars from a grammar package manifest.
+- `--provider-command <command>` runs a grammar provider command.
+- `--provider-cwd <cwd>` sets the provider working directory.
+- `--provider-timeout-ms <ms>` sets the provider timeout.
+
+Render options:
+
+- `--scope-mode <full|minimal>` controls full vs minimal rendering.
+- `--json` prints structured JSON output. This is the default.
+- `--plain` prints only the generated assertion lines.
+- `--compact-ranges` enables disjoint caret compaction.
+- `--no-compact-ranges` disables disjoint caret compaction.
+
+Notes:
+
+- The CLI prints to stdout. It does not modify the file.
+- It currently loads grammars only from local `package.json` and/or `--provider-command`. It does not auto-load installed VS Code grammars.
+
 ## Fixture
 
 This repo also includes a minimal fixture grammar under `fixtures/simple-grammar`.

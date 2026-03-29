@@ -1,8 +1,8 @@
 import { promises as fs } from 'fs'
 import * as oniguruma from 'vscode-oniguruma'
 import * as tm from 'vscode-textmate'
-import { GrammarContribution } from './grammarConfig'
-import { SourceLine } from './syntaxTest'
+import { GrammarContribution } from './grammarTypes'
+import { SourceLine } from './syntaxTestCore'
 
 let onigLibPromise: Promise<tm.IOnigLib> | undefined
 
