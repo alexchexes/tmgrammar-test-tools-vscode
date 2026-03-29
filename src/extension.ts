@@ -5,6 +5,7 @@ import {
   generateLineAssertionBlock,
   generateRangeAssertionBlock
 } from './assertionGenerator'
+import { collectAssertionCodeActionSpecs } from './codeActions'
 import { loadGrammarContributions, tryResolveConfigPath } from './grammarConfig'
 import { buildGrammarSourceSet } from './grammarSources'
 import { loadProviderGrammarContributions } from './grammarProvider'
@@ -32,6 +33,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     registerInsertCommand('tmGrammarTestTools.insertRangeAssertionsMinimal', 'range', 'minimal')
   )
+  context.subscriptions.push(registerCodeActionsProvider())
 }
 
 export function deactivate(): void {}
@@ -55,6 +57,54 @@ function registerInsertCommand(
       void vscode.window.showErrorMessage(message)
     }
   })
+}
+
+function registerCodeActionsProvider(): vscode.Disposable {
+  const providedCodeActionKinds = [vscode.CodeActionKind.QuickFix.append('tmGrammarTestTools')]
+
+  return vscode.languages.registerCodeActionsProvider(
+    [{ scheme: 'file' }, { scheme: 'untitled' }],
+    {
+      provideCodeActions(document, range) {
+        const configuration = vscode.workspace.getConfiguration('tmGrammarTestTools', document.uri)
+        if (!(configuration.get<boolean>('enableCodeActions') ?? true)) {
+          return []
+        }
+
+        if (document.lineCount === 0) {
+          return []
+        }
+
+        let header
+        try {
+          header = parseHeaderLine(document.lineAt(0).text)
+        } catch {
+          return []
+        }
+
+        const sourceLines = collectSourceLines(document, header.commentToken)
+        if (sourceLines.length === 0) {
+          return []
+        }
+
+        return collectAssertionCodeActionSpecs(
+          sourceLines,
+          [toSelectionLineTargetFromRange(range)],
+          [toSelectionInputFromRange(range)]
+        ).map((spec) => {
+          const action = new vscode.CodeAction(spec.title, providedCodeActionKinds[0])
+          action.command = {
+            command: spec.commandId,
+            title: spec.title
+          }
+          return action
+        })
+      }
+    },
+    {
+      providedCodeActionKinds
+    }
+  )
 }
 
 async function insertLineAssertions(editor: vscode.TextEditor, scopeModeOverride?: ScopeMode): Promise<void> {
@@ -300,6 +350,18 @@ function toSelectionLineTarget(selection: vscode.Selection): SelectionLineTarget
   }
 }
 
+function toSelectionLineTargetFromRange(range: vscode.Range | vscode.Selection): SelectionLineTarget {
+  const selection = range instanceof vscode.Selection ? range : undefined
+
+  return {
+    activeLine: selection?.active.line ?? range.end.line,
+    endCharacter: range.end.character,
+    endLine: range.end.line,
+    isEmpty: range.isEmpty,
+    startLine: range.start.line
+  }
+}
+
 function toSelectionInput(selection: vscode.Selection): SelectionInput {
   return {
     activeCharacter: selection.active.character,
@@ -309,6 +371,20 @@ function toSelectionInput(selection: vscode.Selection): SelectionInput {
     isEmpty: selection.isEmpty,
     startCharacter: selection.start.character,
     startLine: selection.start.line
+  }
+}
+
+function toSelectionInputFromRange(range: vscode.Range | vscode.Selection): SelectionInput {
+  const selection = range instanceof vscode.Selection ? range : undefined
+
+  return {
+    activeCharacter: selection?.active.character ?? range.end.character,
+    activeLine: selection?.active.line ?? range.end.line,
+    endCharacter: range.end.character,
+    endLine: range.end.line,
+    isEmpty: range.isEmpty,
+    startCharacter: range.start.character,
+    startLine: range.start.line
   }
 }
 
