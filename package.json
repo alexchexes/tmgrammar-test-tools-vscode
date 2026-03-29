@@ -11,6 +11,9 @@
   "categories": [
     "Other"
   ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -53,6 +56,12 @@
           "default": true,
           "scope": "resource",
           "description": "When enabled, show Code Actions for inserting or refreshing TM Grammar Test Tools assertions at the current cursor or selection."
+        },
+        "tmGrammarTestTools.enableCodeLens": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "When enabled, show CodeLens commands for inserting or refreshing line assertions near source lines in syntax tests."
         },
         "tmGrammarTestTools.grammarProvider.command": {
           "type": "string",
