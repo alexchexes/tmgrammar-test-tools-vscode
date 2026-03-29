@@ -1,17 +1,17 @@
 import * as vscode from 'vscode'
-import { GrammarContribution, loadGrammarContributions, tryResolveConfigPath } from './grammarConfig'
+import {
+  AssertionGenerationContext,
+  AssertionGenerationOptions,
+  generateLineAssertionBlock,
+  generateRangeAssertionBlock
+} from './assertionGenerator'
+import { loadGrammarContributions, tryResolveConfigPath } from './grammarConfig'
 import { buildGrammarSourceSet } from './grammarSources'
 import { loadProviderGrammarContributions } from './grammarProvider'
 import { loadInstalledGrammarContributions } from './installedGrammars'
 import { logError, logInfo, registerLogger } from './log'
-import { renderAssertionBlock, ScopeMode } from './render'
-import {
-  clipTokensToRanges,
-  collectSelectionRangeTargets,
-  coversWholeLine,
-  resolveSelectionRanges,
-  SelectionInput
-} from './selectionTargets'
+import { ScopeMode } from './render'
+import { collectSelectionRangeTargets, coversWholeLine, SelectionInput } from './selectionTargets'
 import { resolveScopeMode } from './scopeMode'
 import {
   collectSourceLines,
@@ -21,7 +21,6 @@ import {
   SelectionLineTarget,
   SourceLine
 } from './syntaxTest'
-import { tokenizeSourceLine } from './textmate'
 
 export function activate(context: vscode.ExtensionContext): void {
   registerLogger(context)
@@ -81,18 +80,16 @@ async function insertLineAssertions(editor: vscode.TextEditor, scopeModeOverride
       continue
     }
 
-    const tokens = await tokenizeSourceLine(
-      context.grammars,
-      context.header.scopeName,
-      context.sourceLines,
-      targetSourceIndex
+    const assertionLines = await generateLineAssertionBlock(
+      context.assertionGenerationContext,
+      targetSourceIndex,
+      context.assertionGenerationOptions
     )
-    const assertionLines = renderAssertionBlock(context.header.commentToken, targetSourceLine.text, tokens, {
-      compactRanges: context.compactRanges,
-      headerScope: context.header.scopeName,
-      scopeMode: context.scopeMode
-    })
-    const assertionBlock = findAssertionBlock(context.document, targetSourceLine.documentLine, context.header.commentToken)
+    const assertionBlock = findAssertionBlock(
+      context.document,
+      targetSourceLine.documentLine,
+      context.assertionGenerationContext.commentToken
+    )
     const hasExistingBlock = assertionBlock.endLineExclusive > assertionBlock.startLine
 
     if (assertionLines.length === 0 && !hasExistingBlock) {
@@ -154,13 +151,13 @@ async function insertRangeAssertions(editor: vscode.TextEditor, scopeModeOverrid
       continue
     }
 
-    const tokens = await tokenizeSourceLine(
-      context.grammars,
-      context.header.scopeName,
-      context.sourceLines,
-      targetSourceIndex
+    const generated = await generateRangeAssertionBlock(
+      context.assertionGenerationContext,
+      targetSourceIndex,
+      selectionTarget,
+      context.assertionGenerationOptions
     )
-    const ranges = resolveSelectionRanges(tokens, selectionTarget.sourceLine.text, selectionTarget)
+    const ranges = generated.ranges
     if (ranges.length === 0) {
       continue
     }
@@ -168,7 +165,7 @@ async function insertRangeAssertions(editor: vscode.TextEditor, scopeModeOverrid
     const assertionBlock = findAssertionBlock(
       context.document,
       selectionTarget.sourceLine.documentLine,
-      context.header.commentToken
+      context.assertionGenerationContext.commentToken
     )
     const hasExistingBlock = assertionBlock.endLineExclusive > assertionBlock.startLine
     const isWholeLineTarget = coversWholeLine(ranges, selectionTarget.sourceLine.text.length)
@@ -178,12 +175,7 @@ async function insertRangeAssertions(editor: vscode.TextEditor, scopeModeOverrid
       continue
     }
 
-    const clippedTokens = clipTokensToRanges(tokens, ranges)
-    const assertionLines = renderAssertionBlock(context.header.commentToken, selectionTarget.sourceLine.text, clippedTokens, {
-      compactRanges: context.compactRanges,
-      headerScope: context.header.scopeName,
-      scopeMode: context.scopeMode
-    })
+    const assertionLines = generated.assertionLines
 
     if (assertionLines.length === 0 && !hasExistingBlock) {
       continue
@@ -249,13 +241,15 @@ async function loadInsertContext(
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri)
   const configuration = vscode.workspace.getConfiguration('tmGrammarTestTools', document.uri)
   const autoLoadInstalledGrammars = configuration.get<boolean>('autoLoadInstalledGrammars') ?? true
-  const compactRanges = configuration.get<boolean>('compactRanges') ?? true
-  const scopeMode = resolveScopeMode(configuration.get<string>('scopeMode'), scopeModeOverride)
+  const assertionGenerationOptions: AssertionGenerationOptions = {
+    compactRanges: configuration.get<boolean>('compactRanges') ?? true,
+    scopeMode: resolveScopeMode(configuration.get<string>('scopeMode'), scopeModeOverride)
+  }
   logInfo(`Insert assertions requested for ${document.uri.fsPath}`)
   logInfo(`Workspace folder: ${workspaceFolder?.uri.fsPath ?? '<none>'}`)
   logInfo(`Target mode: ${targetMode}`)
   logInfo(
-    `Render options: scopeMode=${scopeMode}, compactRanges=${compactRanges}, autoLoadInstalledGrammars=${autoLoadInstalledGrammars}`
+    `Render options: scopeMode=${assertionGenerationOptions.scopeMode}, compactRanges=${assertionGenerationOptions.compactRanges}, autoLoadInstalledGrammars=${autoLoadInstalledGrammars}`
   )
 
   if (document.lineCount === 0) {
@@ -284,11 +278,14 @@ async function loadInsertContext(
   )
 
   return {
-    compactRanges,
+    assertionGenerationContext: {
+      commentToken: header.commentToken,
+      grammars: grammarSources.grammars,
+      scopeName: header.scopeName,
+      sourceLines
+    },
+    assertionGenerationOptions,
     document,
-    grammars: grammarSources.grammars,
-    header,
-    scopeMode,
     sourceLines
   }
 }
@@ -371,10 +368,8 @@ interface AssertionUpdate {
 }
 
 interface InsertContext {
-  compactRanges: boolean
+  assertionGenerationContext: AssertionGenerationContext
+  assertionGenerationOptions: AssertionGenerationOptions
   document: vscode.TextDocument
-  grammars: readonly GrammarContribution[]
-  header: ReturnType<typeof parseHeaderLine>
-  scopeMode: ScopeMode
   sourceLines: readonly SourceLine[]
 }
