@@ -1,7 +1,11 @@
 import * as assert from 'node:assert/strict'
 import * as path from 'node:path'
 import { test } from 'node:test'
-import { generateLineAssertionBlock, generateRangeAssertionBlock } from '../src/assertionGenerator'
+import {
+  appendMissingAssertionLines,
+  generateLineAssertionBlock,
+  generateRangeAssertionBlock
+} from '../src/assertionGenerator'
 
 const fixtureGrammarPath = path.resolve(__dirname, '../../fixtures/simple-grammar/syntaxes/simple-poc.tmLanguage.json')
 const generationContext = {
@@ -46,4 +50,14 @@ test('generateRangeAssertionBlock returns both rendered assertions and resolved 
 
   assert.deepEqual(generated.ranges, [{ startIndex: 16, endIndex: 18 }])
   assert.deepEqual(generated.assertionLines, ['//              ^^ string.quoted.double.simple-poc'])
+})
+
+test('appendMissingAssertionLines only keeps newly generated lines', () => {
+  assert.deepEqual(
+    appendMissingAssertionLines(
+      ['// existing one', '// existing two'],
+      ['// existing two', '// new three', '// new four']
+    ),
+    ['// new three', '// new four']
+  )
 })

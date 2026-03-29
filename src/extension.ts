@@ -2,6 +2,7 @@ import * as vscode from 'vscode'
 import {
   AssertionGenerationContext,
   AssertionGenerationOptions,
+  appendMissingAssertionLines,
   generateLineAssertionBlock,
   generateRangeAssertionBlock
 } from './assertionGenerator'
@@ -219,6 +220,7 @@ async function insertLineAssertions(
 
       updates.push({
         assertionBlock,
+        editMode: 'replace',
         assertionLines,
         targetSourceLine
       })
@@ -237,7 +239,8 @@ async function insertLineAssertions(
           editBuilder,
           update.targetSourceLine.documentLine,
           update.assertionBlock,
-          update.assertionLines
+          update.assertionLines,
+          update.editMode
         )
       }
     })
@@ -269,8 +272,8 @@ async function insertRangeAssertions(editor: vscode.TextEditor, scopeModeOverrid
   }
 
   const sourceLineIndexes = new Map(context.sourceLines.map((line, index) => [line.documentLine, index]))
-  const blockedLines: number[] = []
   const updates: AssertionUpdate[] = []
+  const skipReasons: string[] = []
 
   for (const selectionTarget of selectionTargets) {
     const targetSourceIndex = sourceLineIndexes.get(selectionTarget.sourceLine.documentLine)
@@ -286,6 +289,7 @@ async function insertRangeAssertions(editor: vscode.TextEditor, scopeModeOverrid
     )
     const ranges = generated.ranges
     if (ranges.length === 0) {
+      skipReasons.push(describeEmptyRangeTarget(selectionTarget))
       continue
     }
 
@@ -296,48 +300,52 @@ async function insertRangeAssertions(editor: vscode.TextEditor, scopeModeOverrid
     )
     const hasExistingBlock = assertionBlock.endLineExclusive > assertionBlock.startLine
     const isWholeLineTarget = coversWholeLine(ranges, selectionTarget.sourceLine.text.length)
+    const existingAssertionLines = hasExistingBlock
+      ? collectAssertionLines(context.document, assertionBlock.startLine, assertionBlock.endLineExclusive)
+      : []
+    const editMode: AssertionUpdate['editMode'] = hasExistingBlock && !isWholeLineTarget ? 'append' : 'replace'
+    const assertionLines =
+      editMode === 'append'
+        ? appendMissingAssertionLines(existingAssertionLines, generated.assertionLines)
+        : generated.assertionLines
 
-    if (hasExistingBlock && !isWholeLineTarget) {
-      blockedLines.push(selectionTarget.sourceLine.documentLine + 1)
-      continue
-    }
-
-    const assertionLines = generated.assertionLines
-
-    if (assertionLines.length === 0 && !hasExistingBlock) {
+    if (assertionLines.length === 0 && (!hasExistingBlock || editMode === 'append')) {
+      skipReasons.push(
+        editMode === 'append'
+          ? `line ${selectionTarget.sourceLine.documentLine + 1}: generated assertions already exist in the block`
+          : `line ${selectionTarget.sourceLine.documentLine + 1}: the selected range produced no assertion lines`
+      )
       continue
     }
 
     updates.push({
       assertionBlock,
+      editMode,
       assertionLines,
       targetSourceLine: selectionTarget.sourceLine
     })
   }
 
-  if (blockedLines.length > 0) {
-    throw new Error(
-      `Partial selection updates are not supported when a line already has assertions. Blocked line${blockedLines.length === 1 ? '' : 's'}: ${blockedLines.join(', ')}.`
-    )
-  }
-
   if (updates.length === 0) {
-    void vscode.window.showInformationMessage('No assertions were generated for the targeted selection ranges.')
+    const detail =
+      skipReasons.length > 0 ? ` ${skipReasons.join('; ')}.` : ''
+    void vscode.window.showInformationMessage(`No assertions were generated for the targeted selection ranges.${detail}`)
     return
   }
 
   let editApplied = false
   editApplied = await editor.edit((editBuilder) => {
     for (const update of updates) {
-      applyAssertionEdit(
-        context.document,
-        editBuilder,
-        update.targetSourceLine.documentLine,
-        update.assertionBlock,
-        update.assertionLines
-      )
-    }
-  })
+        applyAssertionEdit(
+          context.document,
+          editBuilder,
+          update.targetSourceLine.documentLine,
+          update.assertionBlock,
+          update.assertionLines,
+          update.editMode
+        )
+      }
+    })
 
   if (!editApplied) {
     throw new Error('The editor rejected the assertion update.')
@@ -503,11 +511,28 @@ function applyAssertionEdit(
   editBuilder: vscode.TextEditorEdit,
   sourceLine: number,
   assertionBlock: { startLine: number; endLineExclusive: number },
-  assertionLines: readonly string[]
+  assertionLines: readonly string[],
+  editMode: 'append' | 'replace' = 'replace'
 ): void {
   const eol = document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n'
   const hasExistingBlock = assertionBlock.endLineExclusive > assertionBlock.startLine
   const renderedBlock = assertionLines.join(eol)
+
+  if (editMode === 'append' && hasExistingBlock) {
+    if (renderedBlock.length === 0) {
+      return
+    }
+
+    const insertionPosition =
+      assertionBlock.endLineExclusive < document.lineCount
+        ? new vscode.Position(assertionBlock.endLineExclusive, 0)
+        : document.lineAt(document.lineCount - 1).range.end
+    const insertionText =
+      assertionBlock.endLineExclusive < document.lineCount ? renderedBlock + eol : eol + renderedBlock
+
+    editBuilder.insert(insertionPosition, insertionText)
+    return
+  }
 
   if (hasExistingBlock) {
     const replacement = renderedBlock.length === 0 ? '' : appendTrailingEol(renderedBlock, eol, assertionBlock.endLineExclusive, document)
@@ -549,6 +574,7 @@ function getLineBlockRange(document: vscode.TextDocument, startLine: number, end
 
 interface AssertionUpdate {
   assertionBlock: { startLine: number; endLineExclusive: number }
+  editMode: 'append' | 'replace'
   assertionLines: readonly string[]
   targetSourceLine: SourceLine
 }
@@ -558,4 +584,27 @@ interface InsertContext {
   assertionGenerationOptions: AssertionGenerationOptions
   document: vscode.TextDocument
   sourceLines: readonly SourceLine[]
+}
+
+function collectAssertionLines(
+  document: vscode.TextDocument,
+  startLine: number,
+  endLineExclusive: number
+): readonly string[] {
+  const lines: string[] = []
+  for (let lineNumber = startLine; lineNumber < endLineExclusive; lineNumber++) {
+    lines.push(document.lineAt(lineNumber).text)
+  }
+
+  return lines
+}
+
+function describeEmptyRangeTarget(selectionTarget: ReturnType<typeof collectSelectionRangeTargets>[number]): string {
+  const lineNumber = selectionTarget.sourceLine.documentLine + 1
+
+  if (selectionTarget.explicitRanges.length === 0 && selectionTarget.cursorPositions.length > 0) {
+    return `line ${lineNumber}: no token was found at the cursor position`
+  }
+
+  return `line ${lineNumber}: the selected range resolved to no tokenized content`
 }
