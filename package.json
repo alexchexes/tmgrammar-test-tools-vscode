@@ -4,7 +4,11 @@
   "description": "POC VS Code extension for inserting caret assertions into TextMate syntax tests.",
   "version": "0.0.1",
   "publisher": "local",
-  "license": "MIT",
+  "license": "MIT",  
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alexchexes/vscode-tmgrammar-test-tools"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
