@@ -86,19 +86,6 @@ function createMinimalAssertionSpecs(tokens: readonly NormalizedToken[], headerS
   computeCoverage(root)
 
   const specs: AssertionSpec[] = []
-  const basePrefix = extractBasePrefix(root)
-
-  if (basePrefix) {
-    specs.push({
-      order: basePrefix.node.firstTokenIndex,
-      ranges: basePrefix.node.coverageRanges,
-      scopes: basePrefix.scopes
-    })
-
-    collectMinimalSpecs(basePrefix.node, basePrefix.scopes, basePrefix.scopes, specs)
-    return specs
-  }
-
   collectMinimalSpecs(root, [], [], specs)
   return specs
 }
@@ -169,19 +156,6 @@ function computeCoverage(node: MinimalScopeNode): void {
   node.firstTokenIndex = firstTokenIndex
 }
 
-function extractBasePrefix(root: MinimalScopeNode): { node: MinimalScopeNode; scopes: string[] } | undefined {
-  let currentNode = root
-  const scopes: string[] = []
-
-  while (currentNode.terminalRanges.length === 0 && currentNode.children.size === 1) {
-    const [scope, childNode] = currentNode.children.entries().next().value as [string, MinimalScopeNode]
-    scopes.push(scope)
-    currentNode = childNode
-  }
-
-  return scopes.length > 0 ? { node: currentNode, scopes } : undefined
-}
-
 function collectMinimalSpecs(
   node: MinimalScopeNode,
   pathScopes: readonly string[],
@@ -196,22 +170,44 @@ function collectMinimalSpecs(
     .sort((left, right) => left.child.firstTokenIndex - right.child.firstTokenIndex)
 
   for (const { child, scope } of children) {
-    const childPathScopes = [...pathScopes, scope]
+    const { didCollapse, node: collapsedChild, scopes: childPathScopes } = collapseSharedPrefix(child, [...pathScopes, scope])
     let nextLastEmittedScopes = lastEmittedScopes
 
-    if (child.terminalRanges.length > 0) {
+    if (didCollapse || collapsedChild.terminalRanges.length > 0) {
       const emittedScopes = childPathScopes.slice(lastEmittedScopes.length)
       if (emittedScopes.length > 0) {
         result.push({
-          order: child.firstTokenIndex,
-          ranges: child.coverageRanges,
+          order: collapsedChild.firstTokenIndex,
+          ranges: collapsedChild.coverageRanges,
           scopes: emittedScopes
         })
         nextLastEmittedScopes = childPathScopes
       }
     }
 
-    collectMinimalSpecs(child, childPathScopes, nextLastEmittedScopes, result)
+    collectMinimalSpecs(collapsedChild, childPathScopes, nextLastEmittedScopes, result)
+  }
+}
+
+function collapseSharedPrefix(
+  node: MinimalScopeNode,
+  scopes: readonly string[]
+): { didCollapse: boolean; node: MinimalScopeNode; scopes: string[] } {
+  let currentNode = node
+  const currentScopes = [...scopes]
+  let didCollapse = false
+
+  while (currentNode.terminalRanges.length === 0 && currentNode.children.size === 1) {
+    const [scope, childNode] = currentNode.children.entries().next().value as [string, MinimalScopeNode]
+    currentScopes.push(scope)
+    currentNode = childNode
+    didCollapse = true
+  }
+
+  return {
+    didCollapse,
+    node: currentNode,
+    scopes: currentScopes
   }
 }
 

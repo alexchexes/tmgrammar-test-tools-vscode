@@ -91,6 +91,34 @@ test('minimal mode keeps the header scope when that is the only information on t
   assert.deepEqual(assertionLines, ['// <---------- source.plain'])
 })
 
+test('minimal mode factors shared internal prefixes even when the root has sibling scopes', () => {
+  const assertionLines = renderAssertionBlock(
+    '#',
+    ' "/a/";',
+    [
+      token(0, 1, 'source.fake'),
+      token(1, 2, 'source.fake', 'shared.regex', 'string.regex', 'punctuation.begin.string'),
+      token(2, 5, 'source.fake', 'shared.regex', 'string.regex'),
+      token(5, 6, 'source.fake', 'shared.regex', 'string.regex', 'punctuation.end.regex'),
+      token(6, 7, 'source.fake', 'punctuation.end.string'),
+      token(7, 8, 'source.fake', 'punctuation.terminator')
+    ],
+    {
+      compactRanges: true,
+      scopeMode: 'minimal',
+      headerScope: 'source.fake'
+    }
+  )
+
+  assert.deepEqual(assertionLines, [
+    '#^^^^^ shared.regex string.regex',
+    '#^ punctuation.begin.string',
+    '#    ^ punctuation.end.regex',
+    '#     ^ punctuation.end.string',
+    '#      ^ punctuation.terminator'
+  ])
+})
+
 test('generated fixture assertions round-trip through vscode-tmgrammar-test in both full and minimal modes', async () => {
   const fixtureGrammarPath = path.resolve(__dirname, '../../fixtures/simple-grammar/syntaxes/simple-poc.tmLanguage.json')
   const grammars = [{ path: fixtureGrammarPath, scopeName: 'source.simple-poc' }]
