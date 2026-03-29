@@ -14,7 +14,10 @@
   "activationEvents": [
     "onCommand:tmGrammarTestTools.insertCaretAssertions",
     "onCommand:tmGrammarTestTools.insertCaretAssertionsFull",
-    "onCommand:tmGrammarTestTools.insertCaretAssertionsMinimal"
+    "onCommand:tmGrammarTestTools.insertCaretAssertionsMinimal",
+    "onCommand:tmGrammarTestTools.insertCaretAssertionsForSelection",
+    "onCommand:tmGrammarTestTools.insertCaretAssertionsForSelectionFull",
+    "onCommand:tmGrammarTestTools.insertCaretAssertionsForSelectionMinimal"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -30,6 +33,18 @@
       {
         "command": "tmGrammarTestTools.insertCaretAssertionsMinimal",
         "title": "TM Grammar Test Tools: Insert Caret Assertions For Current Line (Minimal)"
+      },
+      {
+        "command": "tmGrammarTestTools.insertCaretAssertionsForSelection",
+        "title": "TM Grammar Test Tools: Insert Caret Assertions For Selection"
+      },
+      {
+        "command": "tmGrammarTestTools.insertCaretAssertionsForSelectionFull",
+        "title": "TM Grammar Test Tools: Insert Caret Assertions For Selection (Full)"
+      },
+      {
+        "command": "tmGrammarTestTools.insertCaretAssertionsForSelectionMinimal",
+        "title": "TM Grammar Test Tools: Insert Caret Assertions For Selection (Minimal)"
       }
     ],
     "configuration": {

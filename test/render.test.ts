@@ -3,6 +3,7 @@ import * as path from 'node:path'
 import { test } from 'node:test'
 import type { IToken } from 'vscode-textmate'
 import { renderAssertionBlock } from '../src/render'
+import { clipTokensToRanges } from '../src/selectionTargets'
 import { tokenizeSourceLine } from '../src/textmate'
 
 const { createRegistry } = require('vscode-tmgrammar-test/dist/common/index') as {
@@ -121,5 +122,40 @@ test('generated fixture assertions round-trip through vscode-tmgrammar-test in b
     const parsedTestCase = parseGrammarTestCase(testCase)
     const failures = await runGrammarTestCase(registry, parsedTestCase)
     assert.deepEqual(failures, [], `Expected no vscode-tmgrammar-test failures for ${scopeMode} mode.`)
+  }
+})
+
+test('partial-range fixture assertions round-trip through vscode-tmgrammar-test', async () => {
+  const fixtureGrammarPath = path.resolve(__dirname, '../../fixtures/simple-grammar/syntaxes/simple-poc.tmLanguage.json')
+  const grammars = [{ path: fixtureGrammarPath, scopeName: 'source.simple-poc' }]
+  const sourceLines = [
+    { documentLine: 1, text: '' },
+    { documentLine: 2, text: 'let value = 42' },
+    { documentLine: 3, text: 'const answer = "ok"' }
+  ]
+  const registry = createRegistry(grammars)
+  const tokens = await tokenizeSourceLine(grammars, 'source.simple-poc', sourceLines, 2)
+  const clippedTokens = clipTokensToRanges(tokens, [{ startIndex: 16, endIndex: 18 }])
+
+  for (const scopeMode of ['full', 'minimal'] as const) {
+    const assertionLines = renderAssertionBlock('//', 'const answer = "ok"', clippedTokens, {
+      compactRanges: true,
+      scopeMode,
+      headerScope: 'source.simple-poc'
+    })
+
+    assert.ok(assertionLines.length > 0)
+
+    const testCase = [
+      '// SYNTAX TEST "source.simple-poc" "generated partial range in test"',
+      '',
+      'let value = 42',
+      'const answer = "ok"',
+      ...assertionLines
+    ].join('\n')
+
+    const parsedTestCase = parseGrammarTestCase(testCase)
+    const failures = await runGrammarTestCase(registry, parsedTestCase)
+    assert.deepEqual(failures, [], `Expected no vscode-tmgrammar-test failures for partial ${scopeMode} mode.`)
   }
 })

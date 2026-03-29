@@ -1,26 +1,54 @@
 import * as vscode from 'vscode'
-import { loadGrammarContributions, tryResolveConfigPath } from './grammarConfig'
+import { GrammarContribution, loadGrammarContributions, tryResolveConfigPath } from './grammarConfig'
 import { loadProviderGrammarContributions } from './grammarProvider'
 import { loadInstalledGrammarContributions } from './installedGrammars'
 import { logError, logInfo, registerLogger } from './log'
 import { renderAssertionBlock, ScopeMode } from './render'
+import {
+  clipTokensToRanges,
+  collectSelectionRangeTargets,
+  coversWholeLine,
+  resolveSelectionRanges,
+  SelectionInput
+} from './selectionTargets'
 import { resolveScopeMode } from './scopeMode'
-import { collectSourceLines, findAssertionBlock, findTargetSourceLine, parseHeaderLine } from './syntaxTest'
+import {
+  collectSourceLines,
+  findAssertionBlock,
+  findTargetSourceLinesForSelections,
+  parseHeaderLine,
+  SelectionLineTarget,
+  SourceLine
+} from './syntaxTest'
 import { tokenizeSourceLine } from './textmate'
 
 export function activate(context: vscode.ExtensionContext): void {
   registerLogger(context)
-  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertCaretAssertions'))
-  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertCaretAssertionsFull', 'full'))
-  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertCaretAssertionsMinimal', 'minimal'))
+  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertCaretAssertions', 'line'))
+  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertCaretAssertionsFull', 'line', 'full'))
+  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertCaretAssertionsMinimal', 'line', 'minimal'))
+  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertCaretAssertionsForSelection', 'selection'))
+  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertCaretAssertionsForSelectionFull', 'selection', 'full'))
+  context.subscriptions.push(
+    registerInsertCommand('tmGrammarTestTools.insertCaretAssertionsForSelectionMinimal', 'selection', 'minimal')
+  )
 }
 
 export function deactivate(): void {}
 
-function registerInsertCommand(commandId: string, scopeModeOverride?: ScopeMode): vscode.Disposable {
+function registerInsertCommand(
+  commandId: string,
+  targetMode: 'line' | 'selection',
+  scopeModeOverride?: ScopeMode
+): vscode.Disposable {
   return vscode.commands.registerTextEditorCommand(commandId, async (editor) => {
     try {
-      await insertCaretAssertions(editor, scopeModeOverride)
+      if (targetMode === 'selection') {
+        await insertSelectionCaretAssertions(editor, scopeModeOverride)
+        return
+      }
+
+      await insertCurrentLineCaretAssertions(editor, scopeModeOverride)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       logError(message)
@@ -29,7 +57,193 @@ function registerInsertCommand(commandId: string, scopeModeOverride?: ScopeMode)
   })
 }
 
-async function insertCaretAssertions(editor: vscode.TextEditor, scopeModeOverride?: ScopeMode): Promise<void> {
+async function insertCurrentLineCaretAssertions(editor: vscode.TextEditor, scopeModeOverride?: ScopeMode): Promise<void> {
+  const context = await loadInsertContext(editor, scopeModeOverride, 'line')
+  const targetSourceLines = findTargetSourceLinesForSelections(
+    context.sourceLines,
+    editor.selections.map(toSelectionLineTarget)
+  )
+  logInfo(
+    `Target source lines: ${targetSourceLines.length > 0 ? targetSourceLines.map((line) => line.documentLine + 1).join(', ') : '<none>'}`
+  )
+
+  if (targetSourceLines.length === 0) {
+    throw new Error('Place the cursor on a source line or its assertion block, or select source lines to update.')
+  }
+
+  const sourceLineIndexes = new Map(context.sourceLines.map((line, index) => [line.documentLine, index]))
+  const updates: AssertionUpdate[] = []
+
+  for (const targetSourceLine of targetSourceLines) {
+    const targetSourceIndex = sourceLineIndexes.get(targetSourceLine.documentLine)
+    if (targetSourceIndex === undefined) {
+      continue
+    }
+
+    const tokens = await tokenizeSourceLine(
+      context.grammars,
+      context.header.scopeName,
+      context.sourceLines,
+      targetSourceIndex
+    )
+    const assertionLines = renderAssertionBlock(context.header.commentToken, targetSourceLine.text, tokens, {
+      compactRanges: context.compactRanges,
+      headerScope: context.header.scopeName,
+      scopeMode: context.scopeMode
+    })
+    const assertionBlock = findAssertionBlock(context.document, targetSourceLine.documentLine, context.header.commentToken)
+    const hasExistingBlock = assertionBlock.endLineExclusive > assertionBlock.startLine
+
+    if (assertionLines.length === 0 && !hasExistingBlock) {
+      continue
+    }
+
+    updates.push({
+      assertionBlock,
+      assertionLines,
+      targetSourceLine
+    })
+  }
+
+  if (updates.length === 0) {
+    void vscode.window.showInformationMessage('No assertions were generated for the targeted source lines.')
+    return
+  }
+
+  const editApplied = await editor.edit((editBuilder) => {
+    for (const update of updates) {
+      applyAssertionEdit(
+        context.document,
+        editBuilder,
+        update.targetSourceLine.documentLine,
+        update.assertionBlock,
+        update.assertionLines
+      )
+    }
+  })
+
+  if (!editApplied) {
+    throw new Error('The editor rejected the assertion update.')
+  }
+
+  vscode.window.setStatusBarMessage(
+    `Updated caret assertions for ${updates.length} source line${updates.length === 1 ? '' : 's'}.`,
+    3000
+  )
+}
+
+async function insertSelectionCaretAssertions(editor: vscode.TextEditor, scopeModeOverride?: ScopeMode): Promise<void> {
+  const context = await loadInsertContext(editor, scopeModeOverride, 'selection')
+  const selectionTargets = collectSelectionRangeTargets(context.sourceLines, editor.selections.map(toSelectionInput))
+  logInfo(
+    `Selection target source lines: ${selectionTargets.length > 0 ? selectionTargets.map((target) => target.sourceLine.documentLine + 1).join(', ') : '<none>'}`
+  )
+
+  if (selectionTargets.length === 0) {
+    throw new Error('Place the cursor on source text, or select source text to update.')
+  }
+
+  const sourceLineIndexes = new Map(context.sourceLines.map((line, index) => [line.documentLine, index]))
+  const blockedLines: number[] = []
+  const updates: AssertionUpdate[] = []
+
+  for (const selectionTarget of selectionTargets) {
+    const targetSourceIndex = sourceLineIndexes.get(selectionTarget.sourceLine.documentLine)
+    if (targetSourceIndex === undefined) {
+      continue
+    }
+
+    const tokens = await tokenizeSourceLine(
+      context.grammars,
+      context.header.scopeName,
+      context.sourceLines,
+      targetSourceIndex
+    )
+    const ranges = resolveSelectionRanges(tokens, selectionTarget.sourceLine.text, selectionTarget)
+    if (ranges.length === 0) {
+      continue
+    }
+
+    const assertionBlock = findAssertionBlock(
+      context.document,
+      selectionTarget.sourceLine.documentLine,
+      context.header.commentToken
+    )
+    const hasExistingBlock = assertionBlock.endLineExclusive > assertionBlock.startLine
+    const isWholeLineTarget = coversWholeLine(ranges, selectionTarget.sourceLine.text.length)
+
+    if (hasExistingBlock && !isWholeLineTarget) {
+      blockedLines.push(selectionTarget.sourceLine.documentLine + 1)
+      continue
+    }
+
+    const clippedTokens = clipTokensToRanges(tokens, ranges)
+    const assertionLines = renderAssertionBlock(context.header.commentToken, selectionTarget.sourceLine.text, clippedTokens, {
+      compactRanges: context.compactRanges,
+      headerScope: context.header.scopeName,
+      scopeMode: context.scopeMode
+    })
+
+    if (assertionLines.length === 0 && !hasExistingBlock) {
+      continue
+    }
+
+    updates.push({
+      assertionBlock,
+      assertionLines,
+      targetSourceLine: selectionTarget.sourceLine
+    })
+  }
+
+  if (blockedLines.length > 0) {
+    throw new Error(
+      `Partial selection updates are not supported when a line already has assertions. Blocked line${blockedLines.length === 1 ? '' : 's'}: ${blockedLines.join(', ')}.`
+    )
+  }
+
+  if (updates.length === 0) {
+    void vscode.window.showInformationMessage('No assertions were generated for the targeted selection ranges.')
+    return
+  }
+
+  const editApplied = await editor.edit((editBuilder) => {
+    for (const update of updates) {
+      applyAssertionEdit(
+        context.document,
+        editBuilder,
+        update.targetSourceLine.documentLine,
+        update.assertionBlock,
+        update.assertionLines
+      )
+    }
+  })
+
+  if (!editApplied) {
+    throw new Error('The editor rejected the assertion update.')
+  }
+
+  vscode.window.setStatusBarMessage(
+    `Updated caret assertions for ${updates.length} source line${updates.length === 1 ? '' : 's'} from the current selection.`,
+    3000
+  )
+}
+
+async function loadOptionalLocalGrammarContributions(document: vscode.TextDocument) {
+  const configPath = await tryResolveConfigPath(document)
+  if (!configPath) {
+    logInfo('No local package.json grammar config found for the active document.')
+    return []
+  }
+
+  logInfo(`Using local grammar config: ${configPath}`)
+  return loadGrammarContributions(configPath)
+}
+
+async function loadInsertContext(
+  editor: vscode.TextEditor,
+  scopeModeOverride: ScopeMode | undefined,
+  targetMode: 'line' | 'selection'
+): Promise<InsertContext> {
   const document = editor.document
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri)
   const configuration = vscode.workspace.getConfiguration('tmGrammarTestTools', document.uri)
@@ -37,6 +251,7 @@ async function insertCaretAssertions(editor: vscode.TextEditor, scopeModeOverrid
   const scopeMode = resolveScopeMode(configuration.get<string>('scopeMode'), scopeModeOverride)
   logInfo(`Insert assertions requested for ${document.uri.fsPath}`)
   logInfo(`Workspace folder: ${workspaceFolder?.uri.fsPath ?? '<none>'}`)
+  logInfo(`Target mode: ${targetMode}`)
   logInfo(`Render options: scopeMode=${scopeMode}, compactRanges=${compactRanges}`)
 
   if (document.lineCount === 0) {
@@ -51,12 +266,6 @@ async function insertCaretAssertions(editor: vscode.TextEditor, scopeModeOverrid
     throw new Error('No source lines were found under the syntax test header.')
   }
 
-  const targetSourceLine = findTargetSourceLine(sourceLines, editor.selection.active.line)
-
-  if (!targetSourceLine) {
-    throw new Error('Place the cursor on a source line or on its existing assertion block.')
-  }
-
   const localGrammars = await loadOptionalLocalGrammarContributions(document)
   const providerGrammars = await loadProviderGrammarContributions(document)
   const installedGrammars = loadInstalledGrammarContributions()
@@ -64,42 +273,37 @@ async function insertCaretAssertions(editor: vscode.TextEditor, scopeModeOverrid
   logInfo(
     `Grammar sources: installed=${installedGrammars.length}, local=${localGrammars.length}, provider=${providerGrammars.length}`
   )
-  const targetSourceIndex = sourceLines.findIndex((line) => line.documentLine === targetSourceLine.documentLine)
-  const tokens = await tokenizeSourceLine(grammars, header.scopeName, sourceLines, targetSourceIndex)
-  const assertionLines = renderAssertionBlock(header.commentToken, targetSourceLine.text, tokens, {
+
+  return {
     compactRanges,
-    headerScope: header.scopeName,
-    scopeMode
-  })
-  const assertionBlock = findAssertionBlock(document, targetSourceLine.documentLine, header.commentToken)
-  const hasExistingBlock = assertionBlock.endLineExclusive > assertionBlock.startLine
-
-  if (assertionLines.length === 0 && !hasExistingBlock) {
-    void vscode.window.showInformationMessage('No assertions were generated for the active source line.')
-    return
+    document,
+    grammars,
+    header,
+    scopeMode,
+    sourceLines
   }
-
-  const editApplied = await editor.edit((editBuilder) => {
-    applyAssertionEdit(document, editBuilder, targetSourceLine.documentLine, assertionBlock, assertionLines)
-  })
-
-  if (!editApplied) {
-    throw new Error('The editor rejected the assertion update.')
-  }
-
-  const action = hasExistingBlock ? (assertionLines.length === 0 ? 'Removed' : 'Replaced') : 'Inserted'
-  vscode.window.setStatusBarMessage(`${action} caret assertions for line ${targetSourceLine.documentLine + 1}.`, 3000)
 }
 
-async function loadOptionalLocalGrammarContributions(document: vscode.TextDocument) {
-  const configPath = await tryResolveConfigPath(document)
-  if (!configPath) {
-    logInfo('No local package.json grammar config found for the active document.')
-    return []
+function toSelectionLineTarget(selection: vscode.Selection): SelectionLineTarget {
+  return {
+    activeLine: selection.active.line,
+    endCharacter: selection.end.character,
+    endLine: selection.end.line,
+    isEmpty: selection.isEmpty,
+    startLine: selection.start.line
   }
+}
 
-  logInfo(`Using local grammar config: ${configPath}`)
-  return loadGrammarContributions(configPath)
+function toSelectionInput(selection: vscode.Selection): SelectionInput {
+  return {
+    activeCharacter: selection.active.character,
+    activeLine: selection.active.line,
+    endCharacter: selection.end.character,
+    endLine: selection.end.line,
+    isEmpty: selection.isEmpty,
+    startCharacter: selection.start.character,
+    startLine: selection.start.line
+  }
 }
 
 function applyAssertionEdit(
@@ -149,4 +353,19 @@ function getLineBlockRange(document: vscode.TextDocument, startLine: number, end
   }
 
   return new vscode.Range(start, document.lineAt(document.lineCount - 1).range.end)
+}
+
+interface AssertionUpdate {
+  assertionBlock: { startLine: number; endLineExclusive: number }
+  assertionLines: readonly string[]
+  targetSourceLine: SourceLine
+}
+
+interface InsertContext {
+  compactRanges: boolean
+  document: vscode.TextDocument
+  grammars: readonly GrammarContribution[]
+  header: ReturnType<typeof parseHeaderLine>
+  scopeMode: ScopeMode
+  sourceLines: readonly SourceLine[]
 }

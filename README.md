@@ -14,6 +14,9 @@ Proof-of-concept VS Code extension for generating caret assertions in TextMate s
    - `TM Grammar Test Tools: Insert Caret Assertions For Current Line`
    - `TM Grammar Test Tools: Insert Caret Assertions For Current Line (Full)`
    - `TM Grammar Test Tools: Insert Caret Assertions For Current Line (Minimal)`
+   - `TM Grammar Test Tools: Insert Caret Assertions For Selection`
+   - `TM Grammar Test Tools: Insert Caret Assertions For Selection (Full)`
+   - `TM Grammar Test Tools: Insert Caret Assertions For Selection (Minimal)`
 3. The extension:
    - parses the header
    - finds the nearest `package.json` above the active file that contributes grammars
@@ -26,6 +29,9 @@ Proof-of-concept VS Code extension for generating caret assertions in TextMate s
 
 - Existing assertion lines are skipped during tokenization so rule state is preserved across source lines.
 - First-column tokens are emitted with the `<---` syntax when needed so offsets stay correct for the existing test runner.
+- The current `Current Line` commands are line-oriented: an empty selection targets the line at each cursor, and a non-empty selection regenerates every touched source line top-to-bottom.
+- The current `Selection` commands are range-oriented: a non-empty selection targets the selected characters, and an empty selection resolves the token at the cursor position and uses that token's range.
+- `Selection` commands skip blank or whitespace-only source lines only for range-derived targets, and they refuse partial-range replacement on lines that already have assertion blocks.
 - If your syntax test is not inside the grammar extension repo, set `tmGrammarTestTools.configPath` to the relevant `package.json`.
 - This is important for injection-grammar repos: the local repo can contribute the injection grammar while VS Code supplies the base language grammar, such as `source.js`.
 - If `tmGrammarTestTools.grammarProvider.command` is set, the extension runs it on each invocation and uses the returned grammar files for the current dump.
