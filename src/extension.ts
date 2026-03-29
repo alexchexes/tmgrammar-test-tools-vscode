@@ -1,5 +1,6 @@
 import * as vscode from 'vscode'
 import { GrammarContribution, loadGrammarContributions, tryResolveConfigPath } from './grammarConfig'
+import { buildGrammarSourceSet } from './grammarSources'
 import { loadProviderGrammarContributions } from './grammarProvider'
 import { loadInstalledGrammarContributions } from './installedGrammars'
 import { logError, logInfo, registerLogger } from './log'
@@ -247,12 +248,15 @@ async function loadInsertContext(
   const document = editor.document
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri)
   const configuration = vscode.workspace.getConfiguration('tmGrammarTestTools', document.uri)
+  const autoLoadInstalledGrammars = configuration.get<boolean>('autoLoadInstalledGrammars') ?? true
   const compactRanges = configuration.get<boolean>('compactRanges') ?? true
   const scopeMode = resolveScopeMode(configuration.get<string>('scopeMode'), scopeModeOverride)
   logInfo(`Insert assertions requested for ${document.uri.fsPath}`)
   logInfo(`Workspace folder: ${workspaceFolder?.uri.fsPath ?? '<none>'}`)
   logInfo(`Target mode: ${targetMode}`)
-  logInfo(`Render options: scopeMode=${scopeMode}, compactRanges=${compactRanges}`)
+  logInfo(
+    `Render options: scopeMode=${scopeMode}, compactRanges=${compactRanges}, autoLoadInstalledGrammars=${autoLoadInstalledGrammars}`
+  )
 
   if (document.lineCount === 0) {
     throw new Error('Expected a syntax test file with a header line.')
@@ -268,16 +272,21 @@ async function loadInsertContext(
 
   const localGrammars = await loadOptionalLocalGrammarContributions(document)
   const providerGrammars = await loadProviderGrammarContributions(document)
-  const installedGrammars = loadInstalledGrammarContributions()
-  const grammars = [...installedGrammars, ...localGrammars, ...providerGrammars]
+  const installedGrammars = autoLoadInstalledGrammars ? loadInstalledGrammarContributions() : []
+  const grammarSources = buildGrammarSourceSet(
+    installedGrammars,
+    localGrammars,
+    providerGrammars,
+    autoLoadInstalledGrammars
+  )
   logInfo(
-    `Grammar sources: installed=${installedGrammars.length}, local=${localGrammars.length}, provider=${providerGrammars.length}`
+    `Grammar sources: installed=${grammarSources.installedCount}, local=${grammarSources.localCount}, provider=${grammarSources.providerCount}`
   )
 
   return {
     compactRanges,
     document,
-    grammars,
+    grammars: grammarSources.grammars,
     header,
     scopeMode,
     sourceLines

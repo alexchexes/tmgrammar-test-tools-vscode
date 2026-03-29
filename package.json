@@ -77,6 +77,12 @@
           "scope": "resource",
           "description": "Controls whether generated assertions use exact full scope stacks or a reduced minimal form."
         },
+        "tmGrammarTestTools.autoLoadInstalledGrammars": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "When enabled, automatically load grammars contributed by installed VS Code extensions, including built-in ones, before local package.json and provider grammars."
+        },
         "tmGrammarTestTools.compactRanges": {
           "type": "boolean",
           "default": true,

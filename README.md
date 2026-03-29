@@ -21,7 +21,7 @@ Proof-of-concept VS Code extension for generating caret assertions in TextMate s
    - parses the header
    - finds the nearest `package.json` above the active file that contributes grammars
    - optionally runs a workspace-configured grammar provider command
-   - merges those local grammars with grammars contributed by installed VS Code extensions
+   - optionally auto-loads grammars contributed by installed VS Code extensions
    - tokenizes source lines from the start of the test through the source line under the cursor, or through each source line touched by the current selection
    - inserts or replaces the assertion block below those source lines
 
@@ -43,8 +43,9 @@ Proof-of-concept VS Code extension for generating caret assertions in TextMate s
 ## Grammar Sources
 
 - If your syntax test is not inside the grammar extension repo, set `tmGrammarTestTools.configPath` to the relevant `package.json`.
-- Grammar sources are merged from three places: installed VS Code extensions (including built-in ones), the nearest or configured local `package.json`, and the optional grammar provider command.
-- For the same exact scope name, later sources win: installed VS Code grammars are loaded first, then local `package.json` grammars, then provider grammars.
+- By default, grammar sources are merged from three places: installed VS Code extensions (including built-in ones), the nearest or configured local `package.json`, and the optional grammar provider command.
+- `tmGrammarTestTools.autoLoadInstalledGrammars` defaults to `true`. When it is `false`, installed VS Code grammars are skipped and only local `package.json` plus provider grammars are used.
+- For the same exact scope name, later sources win: installed VS Code grammars are loaded first (when auto-loading is enabled), then local `package.json` grammars, then provider grammars.
 - Injection grammars are additive. A local or provider injection grammar can inject into a base grammar that comes from an installed or built-in VS Code extension, such as a repo contributing `source.js.regexp` while VS Code supplies `source.js`.
 - If `tmGrammarTestTools.grammarProvider.command` is set, the extension runs it on each invocation and uses the returned grammar files for the current dump.
 
@@ -65,7 +66,7 @@ Provider command output can be either:
 - a JSON array of paths or grammar objects
 - a JSON object with a `grammars` array
 
-Provider grammars are merged after installed and local package.json grammars, so exact scope-name matches override earlier sources, while injection grammars remain additive.
+Provider grammars are merged after installed grammars when auto-loading is enabled and after local package.json grammars, so exact scope-name matches override earlier sources, while injection grammars remain additive.
 
 Supported variables in `tmGrammarTestTools.grammarProvider.command`:
 
