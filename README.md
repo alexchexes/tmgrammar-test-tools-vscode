@@ -11,12 +11,12 @@ Proof-of-concept VS Code extension for generating caret assertions in TextMate s
    ```
 
 2. Run one of:
-   - `TM Grammar Test Tools: Insert Caret Assertions For Current Line`
-   - `TM Grammar Test Tools: Insert Caret Assertions For Current Line (Full)`
-   - `TM Grammar Test Tools: Insert Caret Assertions For Current Line (Minimal)`
-   - `TM Grammar Test Tools: Insert Caret Assertions For Selection`
-   - `TM Grammar Test Tools: Insert Caret Assertions For Selection (Full)`
-   - `TM Grammar Test Tools: Insert Caret Assertions For Selection (Minimal)`
+   - `TM Grammar Test Tools: Insert Line Assertions`
+   - `TM Grammar Test Tools: Insert Line Assertions (Full)`
+   - `TM Grammar Test Tools: Insert Line Assertions (Minimal)`
+   - `TM Grammar Test Tools: Insert Range Assertions`
+   - `TM Grammar Test Tools: Insert Range Assertions (Full)`
+   - `TM Grammar Test Tools: Insert Range Assertions (Minimal)`
 3. The extension:
    - parses the header
    - finds the nearest `package.json` above the active file that contributes grammars
@@ -27,17 +27,26 @@ Proof-of-concept VS Code extension for generating caret assertions in TextMate s
 
 ## Notes
 
-- Existing assertion lines are skipped during tokenization so rule state is preserved across source lines.
-- First-column tokens are emitted with the `<---` syntax when needed so offsets stay correct for the existing test runner.
-- The current `Current Line` commands are line-oriented: an empty selection targets the line at each cursor, a non-empty selection regenerates every touched source line top-to-bottom, and assertion lines map back to their owning source line.
-- The current `Selection` commands are range-oriented and operate on source text: a non-empty selection targets the selected characters, and an empty selection resolves the token at the cursor position and uses that token's range.
-- `Selection` commands skip blank or whitespace-only source lines only for range-derived targets, and they refuse partial-range replacement on lines that already have assertion blocks.
-- If your syntax test is not inside the grammar extension repo, set `tmGrammarTestTools.configPath` to the relevant `package.json`.
-- This is important for injection-grammar repos: the local repo can contribute the injection grammar while VS Code supplies the base language grammar, such as `source.js`.
-- If `tmGrammarTestTools.grammarProvider.command` is set, the extension runs it on each invocation and uses the returned grammar files for the current dump.
-- `tmGrammarTestTools.scopeMode` can be `full` or `minimal`. The generic command uses that setting. The explicit `Full` and `Minimal` commands override it for that invocation.
+- Existing assertion lines are skipped during tokenization so TextMate rule state is preserved across source lines.
+- First-column tokens are emitted with the `<---` syntax when needed.
+- `Line` commands are line-oriented:
+   - with empty selection they target the line at each cursor
+   - with non-empty selection they regenerate every touched source line top-to-bottom, and assertion lines map back to their owning source line.
+- `Range` commands are range-oriented and operate on source text:
+   - with non-empty selection they target the selected characters
+   - with empty selection they resolve the token at the cursor position(s) and use that token's range.
+- `Range` commands skip blank or whitespace-only source lines only for range-derived targets, and they refuse partial-range replacement on lines that already have assertion blocks.
+- `tmGrammarTestTools.scopeMode` can be `full` or `minimal`. The generic `Line` and `Range` commands use that setting. The explicit `Full` and `Minimal` commands override it for that invocation.
 - `minimal` drops the header scope only when every token shares it and there is at least one more specific scope to show, then emits broader shared scopes once before narrower child scopes.
 - `tmGrammarTestTools.compactRanges` defaults to `true` and merges disjoint caret ranges when they share the same rendered scope list and the tmgrammar assertion syntax can represent the merge.
+
+## Grammar Sources
+
+- If your syntax test is not inside the grammar extension repo, set `tmGrammarTestTools.configPath` to the relevant `package.json`.
+- Grammar sources are merged from three places: installed VS Code extensions (including built-in ones), the nearest or configured local `package.json`, and the optional grammar provider command.
+- For the same exact scope name, later sources win: installed VS Code grammars are loaded first, then local `package.json` grammars, then provider grammars.
+- Injection grammars are additive. A local or provider injection grammar can inject into a base grammar that comes from an installed or built-in VS Code extension, such as a repo contributing `source.js.regexp` while VS Code supplies `source.js`.
+- If `tmGrammarTestTools.grammarProvider.command` is set, the extension runs it on each invocation and uses the returned grammar files for the current dump.
 
 ## Grammar Provider Hook
 
@@ -80,4 +89,4 @@ To try the POC inside this workspace:
 
 1. Press `F5` to launch the extension host.
 2. Open `fixtures/simple-grammar/tests/example.simple-poc`.
-3. Place the cursor on a source line and run `TM Grammar Test Tools: Insert Caret Assertions For Current Line`.
+3. Place the cursor on a source line and run `TM Grammar Test Tools: Insert Line Assertions`.

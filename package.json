@@ -11,40 +11,32 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [
-    "onCommand:tmGrammarTestTools.insertCaretAssertions",
-    "onCommand:tmGrammarTestTools.insertCaretAssertionsFull",
-    "onCommand:tmGrammarTestTools.insertCaretAssertionsMinimal",
-    "onCommand:tmGrammarTestTools.insertCaretAssertionsForSelection",
-    "onCommand:tmGrammarTestTools.insertCaretAssertionsForSelectionFull",
-    "onCommand:tmGrammarTestTools.insertCaretAssertionsForSelectionMinimal"
-  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "tmGrammarTestTools.insertCaretAssertions",
-        "title": "TM Grammar Test Tools: Insert Caret Assertions For Current Line"
+        "command": "tmGrammarTestTools.insertLineAssertions",
+        "title": "TM Grammar Test Tools: Insert Line Assertions"
       },
       {
-        "command": "tmGrammarTestTools.insertCaretAssertionsFull",
-        "title": "TM Grammar Test Tools: Insert Caret Assertions For Current Line (Full)"
+        "command": "tmGrammarTestTools.insertLineAssertionsFull",
+        "title": "TM Grammar Test Tools: Insert Line Assertions (Full)"
       },
       {
-        "command": "tmGrammarTestTools.insertCaretAssertionsMinimal",
-        "title": "TM Grammar Test Tools: Insert Caret Assertions For Current Line (Minimal)"
+        "command": "tmGrammarTestTools.insertLineAssertionsMinimal",
+        "title": "TM Grammar Test Tools: Insert Line Assertions (Minimal)"
       },
       {
-        "command": "tmGrammarTestTools.insertCaretAssertionsForSelection",
-        "title": "TM Grammar Test Tools: Insert Caret Assertions For Selection"
+        "command": "tmGrammarTestTools.insertRangeAssertions",
+        "title": "TM Grammar Test Tools: Insert Range Assertions"
       },
       {
-        "command": "tmGrammarTestTools.insertCaretAssertionsForSelectionFull",
-        "title": "TM Grammar Test Tools: Insert Caret Assertions For Selection (Full)"
+        "command": "tmGrammarTestTools.insertRangeAssertionsFull",
+        "title": "TM Grammar Test Tools: Insert Range Assertions (Full)"
       },
       {
-        "command": "tmGrammarTestTools.insertCaretAssertionsForSelectionMinimal",
-        "title": "TM Grammar Test Tools: Insert Caret Assertions For Selection (Minimal)"
+        "command": "tmGrammarTestTools.insertRangeAssertionsMinimal",
+        "title": "TM Grammar Test Tools: Insert Range Assertions (Minimal)"
       }
     ],
     "configuration": {

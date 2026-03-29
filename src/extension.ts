@@ -24,13 +24,13 @@ import { tokenizeSourceLine } from './textmate'
 
 export function activate(context: vscode.ExtensionContext): void {
   registerLogger(context)
-  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertCaretAssertions', 'line'))
-  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertCaretAssertionsFull', 'line', 'full'))
-  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertCaretAssertionsMinimal', 'line', 'minimal'))
-  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertCaretAssertionsForSelection', 'selection'))
-  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertCaretAssertionsForSelectionFull', 'selection', 'full'))
+  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertLineAssertions', 'line'))
+  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertLineAssertionsFull', 'line', 'full'))
+  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertLineAssertionsMinimal', 'line', 'minimal'))
+  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertRangeAssertions', 'range'))
+  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertRangeAssertionsFull', 'range', 'full'))
   context.subscriptions.push(
-    registerInsertCommand('tmGrammarTestTools.insertCaretAssertionsForSelectionMinimal', 'selection', 'minimal')
+    registerInsertCommand('tmGrammarTestTools.insertRangeAssertionsMinimal', 'range', 'minimal')
   )
 }
 
@@ -38,17 +38,17 @@ export function deactivate(): void {}
 
 function registerInsertCommand(
   commandId: string,
-  targetMode: 'line' | 'selection',
+  targetMode: 'line' | 'range',
   scopeModeOverride?: ScopeMode
 ): vscode.Disposable {
   return vscode.commands.registerTextEditorCommand(commandId, async (editor) => {
     try {
-      if (targetMode === 'selection') {
-        await insertSelectionCaretAssertions(editor, scopeModeOverride)
+      if (targetMode === 'range') {
+        await insertRangeAssertions(editor, scopeModeOverride)
         return
       }
 
-      await insertCurrentLineCaretAssertions(editor, scopeModeOverride)
+      await insertLineAssertions(editor, scopeModeOverride)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       logError(message)
@@ -57,7 +57,7 @@ function registerInsertCommand(
   })
 }
 
-async function insertCurrentLineCaretAssertions(editor: vscode.TextEditor, scopeModeOverride?: ScopeMode): Promise<void> {
+async function insertLineAssertions(editor: vscode.TextEditor, scopeModeOverride?: ScopeMode): Promise<void> {
   const context = await loadInsertContext(editor, scopeModeOverride, 'line')
   const targetSourceLines = findTargetSourceLinesForSelections(
     context.sourceLines,
@@ -127,16 +127,16 @@ async function insertCurrentLineCaretAssertions(editor: vscode.TextEditor, scope
   }
 
   vscode.window.setStatusBarMessage(
-    `Updated caret assertions for ${updates.length} source line${updates.length === 1 ? '' : 's'}.`,
+    `Updated assertions for ${updates.length} source line${updates.length === 1 ? '' : 's'}.`,
     3000
   )
 }
 
-async function insertSelectionCaretAssertions(editor: vscode.TextEditor, scopeModeOverride?: ScopeMode): Promise<void> {
-  const context = await loadInsertContext(editor, scopeModeOverride, 'selection')
+async function insertRangeAssertions(editor: vscode.TextEditor, scopeModeOverride?: ScopeMode): Promise<void> {
+  const context = await loadInsertContext(editor, scopeModeOverride, 'range')
   const selectionTargets = collectSelectionRangeTargets(context.sourceLines, editor.selections.map(toSelectionInput))
   logInfo(
-    `Selection target source lines: ${selectionTargets.length > 0 ? selectionTargets.map((target) => target.sourceLine.documentLine + 1).join(', ') : '<none>'}`
+    `Range target source lines: ${selectionTargets.length > 0 ? selectionTargets.map((target) => target.sourceLine.documentLine + 1).join(', ') : '<none>'}`
   )
 
   if (selectionTargets.length === 0) {
@@ -223,7 +223,7 @@ async function insertSelectionCaretAssertions(editor: vscode.TextEditor, scopeMo
   }
 
   vscode.window.setStatusBarMessage(
-    `Updated caret assertions for ${updates.length} source line${updates.length === 1 ? '' : 's'} from the current selection.`,
+    `Updated assertions for ${updates.length} source line${updates.length === 1 ? '' : 's'} from the current range.`,
     3000
   )
 }
@@ -242,7 +242,7 @@ async function loadOptionalLocalGrammarContributions(document: vscode.TextDocume
 async function loadInsertContext(
   editor: vscode.TextEditor,
   scopeModeOverride: ScopeMode | undefined,
-  targetMode: 'line' | 'selection'
+  targetMode: 'line' | 'range'
 ): Promise<InsertContext> {
   const document = editor.document
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri)
