@@ -10,6 +10,7 @@ import { loadProviderGrammarContributions } from './grammarProvider'
 import { loadInstalledGrammarContributions } from './installedGrammars'
 import { formatDuration, logError, logInfo, logRunBoundary, startStopwatch } from './log'
 import { parseHeaderLine } from './syntaxTest'
+import { collectTabbedTargetDocumentLines, formatTabOffsetWarning } from './tabWarnings'
 import {
   buildLineOnlyGrammarTestCase,
   collectRunnableSourceLinesFromLines,
@@ -150,6 +151,7 @@ async function runTestItem(
             parsedTestCase,
             resolveSourceLineNumberForDocumentLine(runnableSourceLines, target.lineNumber ?? -1)
           )
+    logTestTabWarning(lines, runnableSourceLines, header.commentToken, target)
     const testContext = await loadTestContext(document)
 
     const registryStopwatch = startStopwatch()
@@ -599,4 +601,35 @@ interface RenderedTestFailure {
   failure: TestFailure
   message: vscode.TestMessage
   outputSummary: string
+}
+
+function logTestTabWarning(
+  lines: readonly string[],
+  runnableSourceLines: readonly RunnableSourceLine[],
+  commentToken: string,
+  target:
+    | {
+        kind: 'file'
+        uri: vscode.Uri
+      }
+    | {
+        kind: 'line'
+        lineNumber: number | undefined
+        uri: vscode.Uri
+      }
+): void {
+  const sourceDocumentLines =
+    target.kind === 'file'
+      ? runnableSourceLines.map((line) => line.documentLine)
+      : target.lineNumber === undefined
+        ? []
+        : [target.lineNumber]
+
+  const warning = formatTabOffsetWarning(
+    collectTabbedTargetDocumentLines(lines, sourceDocumentLines, commentToken),
+    'tested source/assertion'
+  )
+  if (warning) {
+    logInfo(warning)
+  }
 }

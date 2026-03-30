@@ -30,6 +30,7 @@ import {
   SelectionLineTarget,
   SourceLine
 } from './syntaxTest'
+import { collectTabbedTargetDocumentLines, formatTabOffsetWarning } from './tabWarnings'
 import { registerTestingController } from './testing'
 import { resolveGrammarContributionScopes } from './textmate'
 
@@ -204,6 +205,13 @@ async function insertLineAssertions(
     throw new Error('Place the cursor on a source line or its assertion block, or select source lines to update.')
   }
 
+  logTargetTabWarning(
+    context.document,
+    targetSourceLines.map((line) => line.documentLine),
+    context.assertionGenerationContext.commentToken,
+    'targeted source/assertion'
+  )
+
   const generationStopwatch = startStopwatch()
   const sourceLineIndexes = new Map(context.sourceLines.map((line, index) => [line.documentLine, index]))
   const updates: AssertionUpdate[] = []
@@ -308,6 +316,13 @@ async function insertRangeAssertions(editor: vscode.TextEditor, scopeModeOverrid
   if (selectionTargets.length === 0) {
     throw new Error('Place the cursor on source text, or select source text to update.')
   }
+
+  logTargetTabWarning(
+    context.document,
+    selectionTargets.map((target) => target.sourceLine.documentLine),
+    context.assertionGenerationContext.commentToken,
+    'targeted source/assertion'
+  )
 
   const generationStopwatch = startStopwatch()
   const sourceLineIndexes = new Map(context.sourceLines.map((line, index) => [line.documentLine, index]))
@@ -621,6 +636,22 @@ async function resolveSourcedGrammarEntries(
     ...entry,
     grammar: resolvedGrammars[index]
   }))
+}
+
+function logTargetTabWarning(
+  document: vscode.TextDocument,
+  sourceDocumentLines: readonly number[],
+  commentToken: string,
+  targetLabel: string
+): void {
+  const lines = Array.from({ length: document.lineCount }, (_, lineNumber) => document.lineAt(lineNumber).text)
+  const warning = formatTabOffsetWarning(
+    collectTabbedTargetDocumentLines(lines, sourceDocumentLines, commentToken),
+    targetLabel
+  )
+  if (warning) {
+    logInfo(warning)
+  }
 }
 
 function toSelectionLineTarget(selection: vscode.Selection): SelectionLineTarget {

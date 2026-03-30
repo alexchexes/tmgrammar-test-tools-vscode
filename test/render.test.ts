@@ -4,6 +4,7 @@ import { test } from 'node:test'
 import type { IToken } from 'vscode-textmate'
 import { renderAssertionBlock } from '../src/render'
 import { clipTokensToRanges } from '../src/selectionTargets'
+import { collectTabbedTargetDocumentLines, formatTabOffsetWarning } from '../src/tabWarnings'
 import { tokenizeSourceLine } from '../src/textmate'
 
 const { createRegistry } = require('vscode-tmgrammar-test/dist/common/index') as {
@@ -203,6 +204,22 @@ test('tabbed source lines round-trip through vscode-tmgrammar-test in both full 
     const failures = await runGrammarTestCase(registry, parsedTestCase)
     assert.deepEqual(failures, [], `Expected no vscode-tmgrammar-test failures for tabbed ${scopeMode} mode.`)
   }
+})
+
+test('tab warning detection includes both tabbed source and assertion lines', () => {
+  const lines = [
+    '// SYNTAX TEST "source.simple-poc"',
+    '\tconst answer = "ok"',
+    '//\t^^^^ scope.one',
+    'const plain = "ok"',
+    '// ^^^^ scope.two'
+  ]
+
+  assert.deepEqual(collectTabbedTargetDocumentLines(lines, [1, 3], '//'), [1, 2])
+  assert.equal(
+    formatTabOffsetWarning([1, 2], 'targeted source/assertion'),
+    'Tabs detected on targeted source/assertion lines (2-3). Assertion positions use raw character offsets, so visual alignment may look misleading when tabs are present.'
+  )
 })
 
 test('partial-range fixture assertions round-trip through vscode-tmgrammar-test', async () => {
