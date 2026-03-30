@@ -161,10 +161,12 @@ Output options:
 
 - `--json` prints structured JSON output. This is the default.
 - `--plain` prints only the generated assertion lines.
+- `--log-level <silent|info|debug>` prints CLI diagnostics to stderr without affecting stdout output.
 
 Notes:
 
 - The CLI prints to stdout. It does not modify the file.
+- With `--log-level info`, the CLI logs a short summary similar to the extension Output panel. `--log-level debug` also logs the effective grammar-usage trace used for assertion generation.
 - It currently loads grammars only from local `package.json` and/or `--provider-command`. It does not auto-load installed VS Code grammars.
 
 Full usage example:

@@ -7,12 +7,14 @@ import {
   generateRangeAssertionBlock
 } from './assertionGenerator'
 import { findGrammarConfigPathForFile, loadGrammarContributionsFromConfig } from './grammarPackage'
-import { buildGrammarSourceSet } from './grammarSources'
+import { buildDetailedGrammarSourceEntries, buildGrammarSourceSet } from './grammarSources'
+import { getEssentialGrammarSummaryLines, resolveSourcedGrammarEntries } from './grammarDebug'
 import { resolveProjectRootForFile } from './projectRoots'
 import { ScopeMode } from './render'
 import { SelectionInput, collectSelectionRangeTargets } from './selectionTargets'
 import { collectSourceLinesFromLines, parseHeaderLine } from './syntaxTestCore'
 import { runGrammarProvider } from './providerRunner'
+import { performance } from 'node:perf_hooks'
 
 interface CliArguments {
   compactRanges: boolean
@@ -20,6 +22,7 @@ interface CliArguments {
   filePath: string
   help: boolean
   lineTargets: number[]
+  logLevel: 'silent' | 'info' | 'debug'
   outputMode: 'json' | 'plain'
   providerCommand?: string
   providerCwd?: string
@@ -64,8 +67,11 @@ export async function runCli(argv: readonly string[]): Promise<CliOutput> {
   if (args.help) {
     throw new Error(buildHelpText())
   }
+  const logger = createCliLogger(args.logLevel)
+  const totalStopwatch = startStopwatch()
 
   const filePath = path.resolve(args.filePath)
+  logger.info(`CLI assertion dump requested for ${filePath}`)
   const fileContent = await fs.readFile(filePath, 'utf8')
   const lines = splitIntoLines(fileContent)
 
@@ -74,17 +80,35 @@ export async function runCli(argv: readonly string[]): Promise<CliOutput> {
   }
 
   const header = parseHeaderLine(lines[0])
+  logger.info(`Parsed syntax test header with scope ${header.scopeName}`)
   const sourceLines = collectSourceLinesFromLines(lines, header.commentToken)
   if (sourceLines.length === 0) {
     throw new Error('No source lines were found under the syntax test header.')
   }
 
   const projectRoot = await resolveProjectRootForFile(filePath)
+  logger.info(`Resolved project root: ${projectRoot}`)
   const configPath = await findGrammarConfigPathForFile(filePath, {
     configuredPath: args.configPath,
     relativeBase: process.cwd()
   })
+  const localConfigStopwatch = startStopwatch()
+  if (configPath) {
+    logger.info(`Using local grammar config: ${configPath}`)
+  } else {
+    logger.info('No local package.json grammar config found for the CLI target file.')
+  }
   const localGrammars = configPath ? await loadGrammarContributionsFromConfig(configPath) : []
+  if (configPath) {
+    logger.info(`Loaded local grammar config in ${formatDuration(localConfigStopwatch())}.`)
+  }
+  const providerStopwatch = startStopwatch()
+  if (args.providerCommand?.trim()) {
+    logger.info(`Running grammar provider command: ${args.providerCommand}`)
+    if (args.providerCwd?.trim()) {
+      logger.info(`Grammar provider cwd: ${args.providerCwd}`)
+    }
+  }
   const providerGrammars =
     args.providerCommand?.trim()
       ? await runGrammarProvider(
@@ -99,19 +123,42 @@ export async function runCli(argv: readonly string[]): Promise<CliOutput> {
           }
         )
       : []
+  if (args.providerCommand?.trim()) {
+    logger.info(
+      `Grammar provider returned ${providerGrammars.length} grammar path(s): ${providerGrammars
+        .slice(0, 5)
+        .map((grammar) => grammar.path)
+        .join(', ')}${providerGrammars.length > 5 ? ', ...' : ''}`
+    )
+    logger.info(`Grammar provider completed in ${formatDuration(providerStopwatch())}.`)
+  } else {
+    logger.info('No grammar provider command configured for the CLI run.')
+  }
   const grammarSources = buildGrammarSourceSet([], localGrammars, providerGrammars, false)
+  const sourcedGrammars = await resolveSourcedGrammarEntries(
+    buildDetailedGrammarSourceEntries([], localGrammars, providerGrammars, false)
+  )
 
   if (grammarSources.grammars.length === 0) {
     throw new Error(
       'Could not find any grammars to load. Provide --config or --provider-command, or run the CLI from inside a grammar package.'
     )
   }
+  logger.info(
+    `Grammar sources: installed=${grammarSources.installedCount}, local=${grammarSources.localCount}, provider=${grammarSources.providerCount}`
+  )
+  getEssentialGrammarSummaryLines(sourcedGrammars, header.scopeName, 'Use --log-level debug for the full trace.').forEach(
+    (line) => logger.info(line)
+  )
 
   const generationContext: AssertionGenerationContext = {
     commentToken: header.commentToken,
-    grammars: grammarSources.grammars,
+    grammars: sourcedGrammars.map((entry) => entry.grammar),
+    logGrammarDetails: args.logLevel === 'debug',
+    onGrammarTrace: args.logLevel === 'debug' ? (lines) => lines.forEach((line) => logger.debug(line)) : undefined,
     scopeName: header.scopeName,
-    sourceLines
+    sourceLines,
+    sourcedGrammars
   }
   const generationOptions: AssertionGenerationOptions = {
     compactRanges: args.compactRanges,
@@ -120,6 +167,22 @@ export async function runCli(argv: readonly string[]): Promise<CliOutput> {
   const sourceLineIndexes = new Map(sourceLines.map((line, index) => [line.documentLine, index]))
   const targets: CliTargetOutput[] = []
 
+  logger.info(
+    `Target source lines: ${
+      args.lineTargets.length > 0
+        ? args.lineTargets.join(', ')
+        : sourceLines.length > 0 && args.rangeTargets.length > 0
+          ? collectSelectionRangeTargets(
+              sourceLines,
+              args.rangeTargets.map(toSelectionInput)
+            )
+              .map((target) => target.sourceLine.documentLine + 1)
+              .join(', ')
+          : '<none>'
+    }`
+  )
+
+  const generationStopwatch = startStopwatch()
   for (const documentLine of args.lineTargets) {
     const sourceLineIndex = sourceLineIndexes.get(documentLine - 1)
     if (sourceLineIndex === undefined) {
@@ -135,10 +198,7 @@ export async function runCli(argv: readonly string[]): Promise<CliOutput> {
     })
   }
 
-  const rangeTargets = collectSelectionRangeTargets(
-    sourceLines,
-    args.rangeTargets.map(toSelectionInput)
-  )
+  const rangeTargets = collectSelectionRangeTargets(sourceLines, args.rangeTargets.map(toSelectionInput))
 
   for (const rangeTarget of rangeTargets) {
     const sourceLineIndex = sourceLineIndexes.get(rangeTarget.sourceLine.documentLine)
@@ -160,6 +220,8 @@ export async function runCli(argv: readonly string[]): Promise<CliOutput> {
       sourceText: rangeTarget.sourceLine.text
     })
   }
+  logger.info(`Prepared ${targets.length} CLI target result(s) in ${formatDuration(generationStopwatch())}.`)
+  logger.info(`CLI command completed in ${formatDuration(totalStopwatch())}.`)
 
   return {
     commentToken: header.commentToken,
@@ -205,6 +267,7 @@ function parseArguments(argv: readonly string[]): CliArguments {
     filePath: '',
     help: false,
     lineTargets: [],
+    logLevel: 'silent',
     outputMode: 'json',
     rangeTargets: [],
     scopeMode: 'full'
@@ -247,6 +310,9 @@ function parseArguments(argv: readonly string[]): CliArguments {
         break
       case '--plain':
         args.outputMode = 'plain'
+        break
+      case '--log-level':
+        args.logLevel = parseLogLevel(readValue(argv, ++index, '--log-level'))
         break
       case '--line':
         args.lineTargets.push(parsePositiveNumber(readValue(argv, ++index, '--line'), '--line'))
@@ -294,6 +360,14 @@ function parseScopeMode(value: string): ScopeMode {
   }
 
   throw new Error(`--scope-mode must be either "full" or "minimal", received: ${value}`)
+}
+
+function parseLogLevel(value: string): CliArguments['logLevel'] {
+  if (value === 'silent' || value === 'info' || value === 'debug') {
+    return value
+  }
+
+  throw new Error(`--log-level must be "silent", "info", or "debug", received: ${value}`)
 }
 
 function parseRangeSpec(value: string): RangeSpec {
@@ -347,6 +421,7 @@ function buildHelpText(): string {
     '  --provider-cwd <cwd>               Optional grammar provider working directory.',
     '  --provider-timeout-ms <ms>         Provider command timeout in milliseconds.',
     '  --scope-mode <full|minimal>        Assertion rendering mode. Defaults to full.',
+    '  --log-level <silent|info|debug>    Print diagnostics to stderr. Defaults to silent.',
     '  --json                             Print structured JSON output. This is the default.',
     '  --plain                            Print only generated assertion lines.',
     '  --compact-ranges                   Enable disjoint caret compaction. Defaults to enabled.',
@@ -365,4 +440,38 @@ function renderCliOutput(output: CliOutput, outputMode: 'json' | 'plain'): strin
     .filter((block) => block.length > 0)
 
   return blocks.length > 0 ? `${blocks.join('\n\n')}\n` : ''
+}
+
+function createCliLogger(logLevel: CliArguments['logLevel']): {
+  debug: (message: string) => void
+  info: (message: string) => void
+} {
+  return {
+    debug: (message) => {
+      if (logLevel === 'debug') {
+        process.stderr.write(`[debug] ${message}\n`)
+      }
+    },
+    info: (message) => {
+      if (logLevel === 'info' || logLevel === 'debug') {
+        process.stderr.write(`[info] ${message}\n`)
+      }
+    }
+  }
+}
+
+function startStopwatch(): (() => number) & { peekAndResetLast: () => number } {
+  let startedAt = performance.now()
+  const stopwatch = () => performance.now() - startedAt
+  stopwatch.peekAndResetLast = () => {
+    const now = performance.now()
+    const elapsed = now - startedAt
+    startedAt = now
+    return elapsed
+  }
+  return stopwatch
+}
+
+function formatDuration(durationMs: number): string {
+  return `${durationMs.toFixed(durationMs >= 100 ? 0 : durationMs >= 10 ? 1 : 2)} ms`
 }
