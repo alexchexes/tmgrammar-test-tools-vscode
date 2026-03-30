@@ -161,7 +161,7 @@ Output options:
 
 - `--json` prints structured JSON output. This is the default.
 - `--plain` prints only the generated assertion lines.
-- `--log-level <silent|info|debug>` prints CLI diagnostics to stderr without affecting stdout output.
+- `--log-level <silent|info|debug>` prints CLI diagnostics to stderr.
 
 Notes:
 
