@@ -48,6 +48,14 @@ Proof-of-concept VS Code extension for generating caret assertions in TextMate s
 - `tmGrammarTestTools.enableCodeLens` defaults to `true` and adds line-oriented CodeLens commands above non-empty source lines.
 - Code Actions and CodeLens expose the safe `Insert` commands. The destructive `Replace Line` commands are available from the command palette.
 
+## Testing UI
+
+- Open syntax test files are discovered in VS Code's Testing view.
+- The extension creates one test item per open syntax test file and one child item per source line that has an assertion block.
+- You can run a whole file or a single asserted source line from the Testing view or gutter.
+- Test runs use the current editor text, **including unsaved edits**.
+- Failures are shown in the Test Results UI. The `Go to Error` action works on individual failures and tries to select the failing assertion range on the source line.
+
 ## Grammar Sources
 
 - If your syntax test is not inside the grammar extension repo, set `tmGrammarTestTools.configPath` to the relevant `package.json`.
@@ -99,12 +107,6 @@ If `${workspaceFolder}` is used in `command` or `cwd`, the active file must belo
 If `tmGrammarTestTools.grammarProvider.cwd` is empty or unset, the extension runs the provider command from the active document's workspace folder and falls back to `${projectRoot}` when the file is outside the workspace.
 
 `command` and `cwd` are resolved independently, so you can specify one in the workspace's `.vscode/settings.json` and the other in global `settings.json`, but in most cases it is reasonable to keep them together in the same settings file.
-
-## Testing
-
-Run `npm test`.
-
-The current suite covers renderer compaction/minimal-mode behavior, selection targeting/clipping, and round-trips generated fixture assertions through `vscode-tmgrammar-test`.
 
 ## CLI Helper
 
@@ -171,7 +173,15 @@ node <this-repo-root>/out/cli.js \
   --plain
 ```
 
-## Fixture
+## Extension development
+
+### Testing
+
+Run `npm test`.
+
+The current suite covers renderer compaction/minimal-mode behavior, selection targeting/clipping, round-trips generated fixture assertions through `vscode-tmgrammar-test`, and testing-model failure-range resolution.
+
+### Fixture
 
 This repo also includes a minimal fixture grammar under `fixtures/simple-grammar`.
 

@@ -56,8 +56,35 @@
       {
         "command": "tmGrammarTestTools.insertRangeAssertionsMinimal",
         "title": "TM Grammar Test Tools: Insert Range Assertions (Minimal)"
+      },
+      {
+        "command": "tmGrammarTestTools.copyTestFailureMessage",
+        "category": "TM Grammar Test Tools",
+        "title": "Copy"
       }
     ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "tmGrammarTestTools.copyTestFailureMessage",
+          "when": "false"
+        }
+      ],
+      "testing/message/context": [
+        {
+          "command": "tmGrammarTestTools.copyTestFailureMessage",
+          "when": "testMessage == tmGrammarTestTools.failure",
+          "group": "inline"
+        }
+      ],
+      "testing/message/content": [
+        {
+          "command": "tmGrammarTestTools.copyTestFailureMessage",
+          "when": "testMessage == tmGrammarTestTools.failure",
+          "group": "inline"
+        }
+      ]
+    },
     "configuration": {
       "title": "TM Grammar Test Tools",
       "properties": {
@@ -133,13 +160,13 @@
     "vscode:prepublish": "npm run compile"
   },
   "dependencies": {
+    "vscode-tmgrammar-test": "0.1.3",
     "vscode-oniguruma": "^1.5.1",
     "vscode-textmate": "^7.0.1"
   },
   "devDependencies": {
     "@types/node": "^20.14.10",
     "@types/vscode": "^1.85.0",
-    "typescript": "^5.5.4",
-    "vscode-tmgrammar-test": "0.1.3"
+    "typescript": "^5.5.4"
   }
 }

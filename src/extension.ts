@@ -26,6 +26,7 @@ import {
   SelectionLineTarget,
   SourceLine
 } from './syntaxTest'
+import { registerTestingController } from './testing'
 
 export function activate(context: vscode.ExtensionContext): void {
   registerLogger(context)
@@ -45,6 +46,8 @@ export function activate(context: vscode.ExtensionContext): void {
   )
   context.subscriptions.push(registerCodeActionsProvider())
   context.subscriptions.push(registerCodeLensProvider())
+  context.subscriptions.push(registerCopyTestFailureMessageCommand())
+  context.subscriptions.push(registerTestingController(context))
 }
 
 export function deactivate(): void {}
@@ -164,6 +167,17 @@ function registerCodeLensProvider(): vscode.Disposable {
       }
     }
   )
+}
+
+function registerCopyTestFailureMessageCommand(): vscode.Disposable {
+  return vscode.commands.registerCommand('tmGrammarTestTools.copyTestFailureMessage', async (value) => {
+    const message = getTestMessageText(value)
+    if (!message) {
+      return
+    }
+
+    await vscode.env.clipboard.writeText(message)
+  })
 }
 
 async function insertLineAssertions(
@@ -631,3 +645,30 @@ function describeEmptyRangeTarget(selectionTarget: ReturnType<typeof collectSele
 }
 
 type LineRefreshMode = 'replace' | 'safe'
+
+function getTestMessageText(value: unknown): string | undefined {
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    'message' in value &&
+    typeof value.message === 'object' &&
+    value.message !== null &&
+    'message' in value.message
+  ) {
+    const rawMessage = value.message.message
+    if (typeof rawMessage === 'string') {
+      return rawMessage
+    }
+
+    if (
+      typeof rawMessage === 'object' &&
+      rawMessage !== null &&
+      'value' in rawMessage &&
+      typeof rawMessage.value === 'string'
+    ) {
+      return rawMessage.value
+    }
+  }
+
+  return undefined
+}
