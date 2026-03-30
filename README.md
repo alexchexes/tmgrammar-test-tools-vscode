@@ -75,7 +75,8 @@ Example usage:
 ```jsonc
 {
   "tmGrammarTestTools.grammarProvider.command": "node buildAndExportGrammars.js",
-  "tmGrammarTestTools.grammarProvider.cwd": "${workspaceFolder}" // optional
+  "tmGrammarTestTools.grammarProvider.cwd": "${workspaceFolder}", // optional
+  "tmGrammarTestTools.grammarProvider.scopes": ["source.js"] // optional
 }
 ```
 
@@ -100,6 +101,8 @@ Supported variables in `tmGrammarTestTools.grammarProvider.cwd`:
 - `${workspaceFolder}`
 - `${projectRoot}`
 - `${fileDirname}`
+
+If `tmGrammarTestTools.grammarProvider.scopes` is set, the provider runs only when the syntax-test header scope exactly matches one of the configured values. Leave it empty or unset to allow the provider for any scope.
 
 If `${workspaceFolder}` is used in `command` or `cwd`, the active file must belong to a workspace folder.
 

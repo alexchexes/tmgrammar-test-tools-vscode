@@ -454,7 +454,7 @@ async function loadInsertContext(
   }
 
   const localGrammars = await loadOptionalLocalGrammarContributions(document)
-  const providerGrammars = await loadProviderGrammarContributions(document)
+  const providerGrammars = await loadProviderGrammarContributions(document, header.scopeName)
   const installedGrammarStopwatch = startStopwatch()
   const installedGrammars = autoLoadInstalledGrammars ? loadInstalledGrammarContributions() : []
   const grammarSources = buildGrammarSourceSet(

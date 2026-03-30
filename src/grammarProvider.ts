@@ -2,16 +2,28 @@ import * as vscode from 'vscode'
 import { resolveProjectRoot } from './grammarConfig'
 import { GrammarContribution } from './grammarTypes'
 import { formatDuration, logInfo, startStopwatch } from './log'
+import { normalizeConfiguredProviderScopes, shouldRunProviderForScope } from './providerScopeFilter'
 import { ProviderTemplateContext, resolveCommandTemplate, resolveProviderCwdTemplate } from './providerTemplates'
 import { runGrammarProvider } from './providerRunner'
 
-export async function loadProviderGrammarContributions(document: vscode.TextDocument): Promise<GrammarContribution[]> {
+export async function loadProviderGrammarContributions(
+  document: vscode.TextDocument,
+  targetScopeName: string
+): Promise<GrammarContribution[]> {
   const stopwatch = startStopwatch()
   const configuration = vscode.workspace.getConfiguration('tmGrammarTestTools', document.uri)
   const configuredCommand = configuration.get<string>('grammarProvider.command')?.trim()
 
   if (!configuredCommand) {
     logInfo('No grammar provider command configured for the active document.')
+    return []
+  }
+
+  const configuredScopes = normalizeConfiguredProviderScopes(configuration.get<readonly string[]>('grammarProvider.scopes'))
+  if (!shouldRunProviderForScope(targetScopeName, configuredScopes)) {
+    logInfo(
+      `Skipping grammar provider for scope ${targetScopeName} because grammarProvider.scopes is limited to: ${(configuredScopes ?? []).join(', ')}`
+    )
     return []
   }
 

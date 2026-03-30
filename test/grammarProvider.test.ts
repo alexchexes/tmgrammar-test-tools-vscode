@@ -1,5 +1,6 @@
 import * as assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { shouldRunProviderForScope } from '../src/providerScopeFilter'
 import { resolveCommandTemplate, resolveProviderCwdTemplate } from '../src/providerTemplates'
 
 test('provider cwd defaults to workspace folder when one is available', () => {
@@ -57,4 +58,13 @@ test('provider command rejects ${workspaceFolder} when the file is outside a wor
       }),
     /Grammar provider command references \$\{workspaceFolder\}, but it is unavailable/
   )
+})
+
+test('provider scopes limit execution to exact matching syntax test scopes', () => {
+  assert.equal(shouldRunProviderForScope('source.php', ['source.php']), true)
+  assert.equal(shouldRunProviderForScope('source.js', ['source.php']), false)
+})
+
+test('provider scopes are optional', () => {
+  assert.equal(shouldRunProviderForScope('source.js', undefined), true)
 })

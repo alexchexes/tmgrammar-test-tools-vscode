@@ -343,7 +343,8 @@ async function loadTestContext(document: vscode.TextDocument): Promise<{ grammar
     logInfo(`Testing loaded local grammar config in ${formatDuration(localConfigStopwatch())}.`)
   }
 
-  const providerGrammars = await loadProviderGrammarContributions(document)
+  const header = parseHeaderLine(document.lineAt(0).text)
+  const providerGrammars = await loadProviderGrammarContributions(document, header.scopeName)
   const installedGrammarStopwatch = startStopwatch()
   const installedGrammars = autoLoadInstalledGrammars ? loadInstalledGrammarContributions() : []
   const grammarSources = buildGrammarSourceSet(

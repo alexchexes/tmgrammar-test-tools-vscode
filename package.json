@@ -118,6 +118,15 @@
           "scope": "resource",
           "description": "Working directory used when invoking tmGrammarTestTools.grammarProvider.command. Leave empty to use the active document's workspace folder and fall back to project root when the file is outside the workspace. If explicitly set to ${workspaceFolder}, the active file must belong to a workspace folder. Supports ${projectRoot}, ${workspaceFolder}, and ${fileDirname}."
         },
+        "tmGrammarTestTools.grammarProvider.scopes": {
+          "type": "array",
+          "default": [],
+          "scope": "resource",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional list of exact syntax-test header scopes for which tmGrammarTestTools.grammarProvider.command should run. Leave empty to allow the provider for any scope."
+        },
         "tmGrammarTestTools.grammarProvider.timeoutMs": {
           "type": "number",
           "default": 30000,
