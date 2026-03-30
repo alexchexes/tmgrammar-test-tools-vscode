@@ -1,6 +1,11 @@
 import * as assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { isSafeToRefreshAssertionLine, mergeSafeRefreshAssertionLines } from '../src/assertionRefresh'
+import {
+  isSafeToRefreshAssertionLine,
+  mergeAppendAssertionLines,
+  mergeSafeRefreshAssertionLines,
+  planAppendAssertionInsertions
+} from '../src/assertionRefresh'
 
 test('safe refresh accepts simple positive assertions including <- and <~- forms', () => {
   assert.equal(isSafeToRefreshAssertionLine('// ^^^ source.js string.regexp.js', '//'), true)
@@ -84,4 +89,90 @@ test('safe refresh inserts preserved caret assertions near generated caret asser
     '//  ^^^^^^ meta.function-call.js entity.name.function.js - scope1',
     '//        ^               ^ meta.brace.round.js'
   ])
+})
+
+test('append merge inserts new left-arrow assertions above existing caret assertions', () => {
+  const existingAssertionLines = [
+    '// ^^^^^ storage.type.js',
+    '// ^ - meta.var.expr.js'
+  ]
+
+  assert.deepEqual(
+    mergeAppendAssertionLines('//', existingAssertionLines, ['// <~- source.js meta.var.expr.js storage.type.js']),
+    [
+      '// <~- source.js meta.var.expr.js storage.type.js',
+      '// ^^^^^ storage.type.js',
+      '// ^ - meta.var.expr.js'
+    ]
+  )
+})
+
+test('append merge skips weaker positive assertions when a stronger positive assertion with the same marker already exists', () => {
+  const existingAssertionLines = [
+    '// ^^^^^ storage.type.js',
+    '// ^ - meta.var.expr.js',
+    '// <~- source.js meta.var.expr.js storage.type.js'
+  ]
+
+  assert.deepEqual(
+    mergeAppendAssertionLines('//', existingAssertionLines, ['// <~- meta.var.expr.js storage.type.js']),
+    existingAssertionLines
+  )
+})
+
+test('append merge does not drop weaker generated assertions when only a mixed existing line shares the marker', () => {
+  const existingAssertionLines = ['// <--- source.js new.expr.js - scope1']
+  const generatedAssertionLines = ['// <--- new.expr.js']
+
+  assert.deepEqual(mergeAppendAssertionLines('//', existingAssertionLines, generatedAssertionLines), [
+    '// <--- source.js new.expr.js - scope1',
+    '// <--- new.expr.js'
+  ])
+})
+
+test('append insertion plan only inserts the new left-arrow assertion chunk before existing lines', () => {
+  const existingAssertionLines = [
+    '// ^^^^^ storage.type.js',
+    '// ^ - meta.var.expr.js'
+  ]
+
+  assert.deepEqual(
+    planAppendAssertionInsertions('//', existingAssertionLines, ['// <~- source.js meta.var.expr.js storage.type.js']),
+    [
+      {
+        assertionLines: ['// <~- source.js meta.var.expr.js storage.type.js'],
+        beforeExistingIndex: 0
+      }
+    ]
+  )
+})
+
+test('append insertion plan omits weaker redundant assertions already covered by an existing positive line', () => {
+  const existingAssertionLines = [
+    '// ^^^^^ storage.type.js',
+    '// ^ - meta.var.expr.js',
+    '// <~- source.js meta.var.expr.js storage.type.js'
+  ]
+
+  assert.deepEqual(
+    planAppendAssertionInsertions('//', existingAssertionLines, ['// <~- meta.var.expr.js storage.type.js']),
+    []
+  )
+})
+
+test('append insertion plan inserts new caret assertions without rewriting unrelated existing lines', () => {
+  const existingAssertionLines = [
+    '// <--- keyword.operator.new.js',
+    '//        ^               ^ meta.brace.round.js'
+  ]
+
+  assert.deepEqual(
+    planAppendAssertionInsertions('//', existingAssertionLines, ['//  ^^^^^^ meta.function-call.js entity.name.function.js']),
+    [
+      {
+        assertionLines: ['//  ^^^^^^ meta.function-call.js entity.name.function.js'],
+        beforeExistingIndex: 1
+      }
+    ]
+  )
 })

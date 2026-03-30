@@ -25,18 +25,6 @@ export interface GeneratedRangeAssertionBlock {
   ranges: readonly CharacterRange[]
 }
 
-export function appendMissingAssertionLines(
-  existingAssertionLines: readonly string[],
-  generatedAssertionLines: readonly string[]
-): readonly string[] {
-  if (generatedAssertionLines.length === 0) {
-    return []
-  }
-
-  const existingLineSet = new Set(existingAssertionLines)
-  return generatedAssertionLines.filter((line) => !existingLineSet.has(line))
-}
-
 export async function generateLineAssertionBlock(
   context: AssertionGenerationContext,
   targetSourceIndex: number,

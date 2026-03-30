@@ -2,11 +2,10 @@ import * as vscode from 'vscode'
 import {
   AssertionGenerationContext,
   AssertionGenerationOptions,
-  appendMissingAssertionLines,
   generateLineAssertionBlock,
   generateRangeAssertionBlock
 } from './assertionGenerator'
-import { mergeSafeRefreshAssertionLines } from './assertionRefresh'
+import { mergeSafeRefreshAssertionLines, planAppendAssertionInsertions } from './assertionRefresh'
 import { collectAssertionCodeActionSpecs } from './codeActions'
 import { collectLineCodeLensSpecs } from './codeLens'
 import { codeLensControllerDisposable, onDidChangeCodeLenses, refreshCodeLenses } from './codeLensController'
@@ -270,7 +269,8 @@ async function insertLineAssertions(
         update.targetSourceLine.documentLine,
         update.assertionBlock,
         update.assertionLines,
-        update.editMode
+        update.editMode,
+        update.appendInsertions
       )
     }
   })
@@ -353,29 +353,41 @@ async function insertRangeAssertions(editor: vscode.TextEditor, scopeModeOverrid
     const existingAssertionLines = hasExistingBlock
       ? collectAssertionLines(context.document, assertionBlock.startLine, assertionBlock.endLineExclusive)
       : []
-    const editMode: AssertionUpdate['editMode'] = hasExistingBlock && !isWholeLineTarget ? 'append' : 'replace'
+    const shouldMergeAppend = hasExistingBlock && !isWholeLineTarget
+    const appendInsertions =
+      shouldMergeAppend
+        ? planAppendAssertionInsertions(
+            context.assertionGenerationContext.commentToken,
+            existingAssertionLines,
+            generated.assertionLines
+          )
+        : []
     const assertionLines =
-      editMode === 'append'
-        ? appendMissingAssertionLines(existingAssertionLines, generated.assertionLines)
+      shouldMergeAppend
+        ? []
         : mergeSafeRefreshAssertionLines(
             context.assertionGenerationContext.commentToken,
             existingAssertionLines,
             generated.assertionLines
           )
 
-    if (assertionLines.length === 0 && (!hasExistingBlock || editMode === 'append')) {
+    if (shouldMergeAppend && appendInsertions.length === 0) {
+      skipReasons.push(`line ${selectionTarget.sourceLine.documentLine + 1}: generated assertions already exist in the block`)
+      continue
+    }
+
+    if (assertionLines.length === 0 && !hasExistingBlock) {
       skipReasons.push(
-        editMode === 'append'
-          ? `line ${selectionTarget.sourceLine.documentLine + 1}: generated assertions already exist in the block`
-          : `line ${selectionTarget.sourceLine.documentLine + 1}: the selected range produced no assertion lines`
+        `line ${selectionTarget.sourceLine.documentLine + 1}: the selected range produced no assertion lines`
       )
       continue
     }
 
     updates.push({
       assertionBlock,
-      editMode,
+      editMode: shouldMergeAppend ? 'append' : 'replace',
       assertionLines,
+      appendInsertions,
       targetSourceLine: selectionTarget.sourceLine
     })
   }
@@ -399,7 +411,8 @@ async function insertRangeAssertions(editor: vscode.TextEditor, scopeModeOverrid
         update.targetSourceLine.documentLine,
         update.assertionBlock,
         update.assertionLines,
-        update.editMode
+        update.editMode,
+        update.appendInsertions
       )
     }
   })
@@ -595,25 +608,39 @@ function applyAssertionEdit(
   sourceLine: number,
   assertionBlock: { startLine: number; endLineExclusive: number },
   assertionLines: readonly string[],
-  editMode: 'append' | 'replace' = 'replace'
+  editMode: 'append' | 'replace' = 'replace',
+  appendInsertions: readonly { beforeExistingIndex: number; assertionLines: readonly string[] }[] = []
 ): void {
   const eol = document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n'
   const hasExistingBlock = assertionBlock.endLineExclusive > assertionBlock.startLine
   const renderedBlock = assertionLines.join(eol)
 
   if (editMode === 'append' && hasExistingBlock) {
-    if (renderedBlock.length === 0) {
+    if (appendInsertions.length === 0) {
       return
     }
 
-    const insertionPosition =
-      assertionBlock.endLineExclusive < document.lineCount
-        ? new vscode.Position(assertionBlock.endLineExclusive, 0)
-        : document.lineAt(document.lineCount - 1).range.end
-    const insertionText =
-      assertionBlock.endLineExclusive < document.lineCount ? renderedBlock + eol : eol + renderedBlock
+    const existingAssertionLineCount = assertionBlock.endLineExclusive - assertionBlock.startLine
+    for (const insertion of appendInsertions) {
+      const insertionLine = assertionBlock.startLine + insertion.beforeExistingIndex
+      const insertionText = insertion.assertionLines.join(eol)
+      if (insertionText.length === 0) {
+        continue
+      }
 
-    editBuilder.insert(insertionPosition, insertionText)
+      if (insertion.beforeExistingIndex < existingAssertionLineCount && insertionLine < document.lineCount) {
+        editBuilder.insert(new vscode.Position(insertionLine, 0), `${insertionText}${eol}`)
+        continue
+      }
+
+      const insertionPosition =
+        assertionBlock.endLineExclusive < document.lineCount
+          ? new vscode.Position(assertionBlock.endLineExclusive, 0)
+          : document.lineAt(document.lineCount - 1).range.end
+      const textAtEnd =
+        assertionBlock.endLineExclusive < document.lineCount ? `${insertionText}${eol}` : `${eol}${insertionText}`
+      editBuilder.insert(insertionPosition, textAtEnd)
+    }
     return
   }
 
@@ -657,6 +684,7 @@ function getLineBlockRange(document: vscode.TextDocument, startLine: number, end
 
 interface AssertionUpdate {
   assertionBlock: { startLine: number; endLineExclusive: number }
+  appendInsertions?: readonly { beforeExistingIndex: number; assertionLines: readonly string[] }[]
   editMode: 'append' | 'replace'
   assertionLines: readonly string[]
   targetSourceLine: SourceLine

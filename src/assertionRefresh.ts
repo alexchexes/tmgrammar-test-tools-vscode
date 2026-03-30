@@ -9,6 +9,11 @@ interface ParsedAssertionLine {
   width: number
 }
 
+export interface AssertionInsertion {
+  assertionLines: readonly string[]
+  beforeExistingIndex: number
+}
+
 export function isSafeToRefreshAssertionLine(line: string, commentToken: string): boolean {
   const parsedAssertionLine = parseAssertionLine(line, commentToken)
   return (
@@ -66,11 +71,49 @@ export function mergeSafeRefreshAssertionLines(
   }
 
   for (const preservedLine of preservedCaretAssertionLines) {
-    const insertionSlot = findCaretInsertionSlot(mergedAssertionLines, preservedLine, commentToken)
+    const preservedParsed = parseAssertionLine(preservedLine, commentToken)
+    if (!preservedParsed) {
+      mergedAssertionLines.push(preservedLine)
+      continue
+    }
+
+    const insertionSlot = findCaretInsertionSlot(mergedAssertionLines, preservedParsed, commentToken)
     mergedAssertionLines.splice(insertionSlot, 0, preservedLine)
   }
 
   return [...preservedLeftAssertionLines, ...mergedAssertionLines, ...preservedOtherAssertionLines]
+}
+
+export function mergeAppendAssertionLines(
+  commentToken: string,
+  existingAssertionLines: readonly string[],
+  generatedAssertionLines: readonly string[]
+): readonly string[] {
+  if (generatedAssertionLines.length === 0) {
+    return existingAssertionLines
+  }
+
+  const mergedAssertionLines = [...existingAssertionLines]
+
+  for (const generatedLine of generatedAssertionLines) {
+    if (isRedundantGeneratedAssertionLine(generatedLine, existingAssertionLines, commentToken)) {
+      continue
+    }
+
+    const insertionSlot = findAssertionInsertionSlot(mergedAssertionLines, generatedLine, commentToken)
+    mergedAssertionLines.splice(insertionSlot, 0, generatedLine)
+  }
+
+  return mergedAssertionLines
+}
+
+export function planAppendAssertionInsertions(
+  commentToken: string,
+  existingAssertionLines: readonly string[],
+  generatedAssertionLines: readonly string[]
+): readonly AssertionInsertion[] {
+  const mergedAssertionLines = mergeAppendAssertionLines(commentToken, existingAssertionLines, generatedAssertionLines)
+  return deriveAppendInsertions(existingAssertionLines, mergedAssertionLines)
 }
 
 function parseAssertionLine(line: string, commentToken: string): ParsedAssertionLine | undefined {
@@ -102,12 +145,24 @@ function toAssertionSignature(parsedAssertionLine: ParsedAssertionLine): string 
   return `${parsedAssertionLine.marker}\u0000${parsedAssertionLine.positiveScopes.join(' ')}`
 }
 
-function findCaretInsertionSlot(lines: readonly string[], preservedLine: string, commentToken: string): number {
-  const preservedParsed = parseAssertionLine(preservedLine, commentToken)
-  if (!preservedParsed || preservedParsed.kind !== 'caret') {
+function findAssertionInsertionSlot(lines: readonly string[], insertedLine: string, commentToken: string): number {
+  const insertedParsed = parseAssertionLine(insertedLine, commentToken)
+  if (!insertedParsed) {
     return lines.length
   }
 
+  if (insertedParsed.kind === 'left') {
+    return findLeftInsertionSlot(lines, insertedParsed, commentToken)
+  }
+
+  return findCaretInsertionSlot(lines, insertedParsed, commentToken)
+}
+
+function findCaretInsertionSlot(
+  lines: readonly string[],
+  insertedParsed: ParsedAssertionLine,
+  commentToken: string
+): number {
   let insertionSlot = lines.length
 
   for (let index = 0; index < lines.length; index++) {
@@ -120,7 +175,7 @@ function findCaretInsertionSlot(lines: readonly string[], preservedLine: string,
       continue
     }
 
-    if (compareCaretMarkers(preservedParsed, parsedLine) < 0) {
+    if (compareAssertionMarkers(insertedParsed, parsedLine) < 0) {
       insertionSlot = index
       break
     }
@@ -129,7 +184,35 @@ function findCaretInsertionSlot(lines: readonly string[], preservedLine: string,
   return insertionSlot
 }
 
-function compareCaretMarkers(left: ParsedAssertionLine, right: ParsedAssertionLine): number {
+function findLeftInsertionSlot(
+  lines: readonly string[],
+  insertedParsed: ParsedAssertionLine,
+  commentToken: string
+): number {
+  let insertionSlot = 0
+
+  for (let index = 0; index < lines.length; index++) {
+    const parsedLine = parseAssertionLine(lines[index], commentToken)
+    if (!parsedLine) {
+      continue
+    }
+
+    if (parsedLine.kind !== 'left') {
+      insertionSlot = index
+      break
+    }
+
+    insertionSlot = index + 1
+    if (compareAssertionMarkers(insertedParsed, parsedLine) < 0) {
+      insertionSlot = index
+      break
+    }
+  }
+
+  return insertionSlot
+}
+
+function compareAssertionMarkers(left: ParsedAssertionLine, right: ParsedAssertionLine): number {
   if (left.startOffset !== right.startOffset) {
     return left.startOffset - right.startOffset
   }
@@ -139,6 +222,105 @@ function compareCaretMarkers(left: ParsedAssertionLine, right: ParsedAssertionLi
   }
 
   return 0
+}
+
+function isRedundantGeneratedAssertionLine(
+  generatedLine: string,
+  existingAssertionLines: readonly string[],
+  commentToken: string
+): boolean {
+  if (existingAssertionLines.includes(generatedLine)) {
+    return true
+  }
+
+  const generatedParsed = parseAssertionLine(generatedLine, commentToken)
+  if (!generatedParsed || generatedParsed.positiveScopes.length === 0) {
+    return false
+  }
+
+  return existingAssertionLines.some((existingLine) => {
+    const existingParsed = parseAssertionLine(existingLine, commentToken)
+    if (!existingParsed) {
+      return false
+    }
+
+    if (
+      existingParsed.kind !== generatedParsed.kind ||
+      existingParsed.startOffset !== generatedParsed.startOffset ||
+      existingParsed.width !== generatedParsed.width
+    ) {
+      return false
+    }
+
+    if (existingParsed.hasNegativeScopes) {
+      return toAssertionSignature(existingParsed) === toAssertionSignature(generatedParsed)
+    }
+
+    return isOrderedSubsequence(generatedParsed.positiveScopes, existingParsed.positiveScopes)
+  })
+}
+
+function isOrderedSubsequence(needle: readonly string[], haystack: readonly string[]): boolean {
+  let haystackIndex = 0
+
+  for (const token of needle) {
+    while (haystackIndex < haystack.length && haystack[haystackIndex] !== token) {
+      haystackIndex++
+    }
+
+    if (haystackIndex >= haystack.length) {
+      return false
+    }
+
+    haystackIndex++
+  }
+
+  return true
+}
+
+function deriveAppendInsertions(
+  existingAssertionLines: readonly string[],
+  mergedAssertionLines: readonly string[]
+): readonly AssertionInsertion[] {
+  const insertions: AssertionInsertion[] = []
+  let existingIndex = 0
+  let currentInsertionStart = -1
+  let currentInsertionLines: string[] = []
+
+  for (const mergedLine of mergedAssertionLines) {
+    if (existingIndex < existingAssertionLines.length && mergedLine === existingAssertionLines[existingIndex]) {
+      if (currentInsertionLines.length > 0) {
+        insertions.push({
+          assertionLines: currentInsertionLines,
+          beforeExistingIndex: currentInsertionStart
+        })
+        currentInsertionLines = []
+        currentInsertionStart = -1
+      }
+
+      existingIndex++
+      continue
+    }
+
+    if (currentInsertionStart === -1) {
+      currentInsertionStart = existingIndex
+    }
+
+    currentInsertionLines.push(mergedLine)
+  }
+
+  if (currentInsertionLines.length > 0) {
+    insertions.push({
+      assertionLines: currentInsertionLines,
+      beforeExistingIndex: currentInsertionStart
+    })
+  }
+
+  if (existingIndex !== existingAssertionLines.length) {
+    throw new Error('Append merge would need to rewrite existing assertion lines, which is not supported.')
+  }
+
+  return insertions
 }
 
 function countLeadingTildes(markerBody: string): number {
