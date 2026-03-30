@@ -14,7 +14,7 @@ import { loadGrammarContributions, tryResolveConfigPath } from './grammarConfig'
 import { buildGrammarSourceSet } from './grammarSources'
 import { loadProviderGrammarContributions } from './grammarProvider'
 import { loadInstalledGrammarContributions } from './installedGrammars'
-import { logError, logInfo, registerLogger } from './log'
+import { formatDuration, logError, logInfo, logRunBoundary, registerLogger, startStopwatch } from './log'
 import { ScopeMode } from './render'
 import { collectSelectionRangeTargets, coversWholeLine, SelectionInput } from './selectionTargets'
 import { resolveScopeMode } from './scopeMode'
@@ -57,15 +57,19 @@ function registerInsertCommand(
 ): vscode.Disposable {
   return vscode.commands.registerTextEditorCommand(commandId, async (editor, _edit, args) => {
     const commandArgs = parseInsertCommandArgs(args)
+    const commandLabel =
+      targetMode === 'range'
+        ? `range assertions (${scopeModeOverride ?? 'configured'})`
+        : `${lineRefreshMode === 'replace' ? 'replace line' : 'line'} assertions (${scopeModeOverride ?? 'configured'})`
 
     if (targetMode === 'range') {
-      await runInsertCommand(async () => {
+      await runInsertCommand(commandLabel, async () => {
         await insertRangeAssertions(editor, scopeModeOverride)
       })
       return
     }
 
-    await runInsertCommand(async () => {
+    await runInsertCommand(commandLabel, async () => {
       await insertLineAssertions(editor, scopeModeOverride, lineRefreshMode, commandArgs.targetSourceDocumentLine)
     })
   })
@@ -181,6 +185,7 @@ async function insertLineAssertions(
     throw new Error('Place the cursor on a source line or its assertion block, or select source lines to update.')
   }
 
+  const generationStopwatch = startStopwatch()
   const sourceLineIndexes = new Map(context.sourceLines.map((line, index) => [line.documentLine, index]))
   const updates: AssertionUpdate[] = []
 
@@ -230,6 +235,9 @@ async function insertLineAssertions(
     return
   }
 
+  logInfo(`Prepared ${updates.length} line assertion update(s) in ${formatDuration(generationStopwatch())}.`)
+
+  const editStopwatch = startStopwatch()
   let editApplied = false
   editApplied = await editor.edit((editBuilder) => {
     for (const update of updates) {
@@ -248,6 +256,7 @@ async function insertLineAssertions(
     throw new Error('The editor rejected the assertion update.')
   }
 
+  logInfo(`Applied line assertion edit in ${formatDuration(editStopwatch())}.`)
   refreshCodeLenses()
   vscode.window.setStatusBarMessage(
     `Updated assertions for ${updates.length} source line${updates.length === 1 ? '' : 's'}.`,
@@ -255,13 +264,18 @@ async function insertLineAssertions(
   )
 }
 
-async function runInsertCommand(operation: () => Promise<void>): Promise<void> {
+async function runInsertCommand(commandLabel: string, operation: () => Promise<void>): Promise<void> {
+  const stopwatch = startStopwatch()
+  logRunBoundary(commandLabel, 'start')
   try {
     await operation()
+    logInfo(`Command completed: ${commandLabel} in ${formatDuration(stopwatch())}.`)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    logError(message)
+    logError(`${message}\nCommand failed after ${formatDuration(stopwatch())}: ${commandLabel}`)
     void vscode.window.showErrorMessage(message)
+  } finally {
+    logRunBoundary(commandLabel, 'end')
   }
 }
 
@@ -276,6 +290,7 @@ async function insertRangeAssertions(editor: vscode.TextEditor, scopeModeOverrid
     throw new Error('Place the cursor on source text, or select source text to update.')
   }
 
+  const generationStopwatch = startStopwatch()
   const sourceLineIndexes = new Map(context.sourceLines.map((line, index) => [line.documentLine, index]))
   const updates: AssertionUpdate[] = []
   const skipReasons: string[] = []
@@ -342,6 +357,9 @@ async function insertRangeAssertions(editor: vscode.TextEditor, scopeModeOverrid
     return
   }
 
+  logInfo(`Prepared ${updates.length} range assertion update(s) in ${formatDuration(generationStopwatch())}.`)
+
+  const editStopwatch = startStopwatch()
   let editApplied = false
   editApplied = await editor.edit((editBuilder) => {
     for (const update of updates) {
@@ -360,6 +378,7 @@ async function insertRangeAssertions(editor: vscode.TextEditor, scopeModeOverrid
     throw new Error('The editor rejected the assertion update.')
   }
 
+  logInfo(`Applied range assertion edit in ${formatDuration(editStopwatch())}.`)
   refreshCodeLenses()
   vscode.window.setStatusBarMessage(
     `Updated assertions for ${updates.length} source line${updates.length === 1 ? '' : 's'} from the current range.`,
@@ -368,6 +387,7 @@ async function insertRangeAssertions(editor: vscode.TextEditor, scopeModeOverrid
 }
 
 async function loadOptionalLocalGrammarContributions(document: vscode.TextDocument) {
+  const stopwatch = startStopwatch()
   const configPath = await tryResolveConfigPath(document)
   if (!configPath) {
     logInfo('No local package.json grammar config found for the active document.')
@@ -375,7 +395,9 @@ async function loadOptionalLocalGrammarContributions(document: vscode.TextDocume
   }
 
   logInfo(`Using local grammar config: ${configPath}`)
-  return loadGrammarContributions(configPath)
+  const grammars = await loadGrammarContributions(configPath)
+  logInfo(`Loaded local grammar config in ${formatDuration(stopwatch())}.`)
+  return grammars
 }
 
 async function loadInsertContext(
@@ -383,6 +405,7 @@ async function loadInsertContext(
   scopeModeOverride: ScopeMode | undefined,
   targetMode: 'line' | 'range'
 ): Promise<InsertContext> {
+  const stopwatch = startStopwatch()
   const document = editor.document
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri)
   const configuration = vscode.workspace.getConfiguration('tmGrammarTestTools', document.uri)
@@ -412,6 +435,7 @@ async function loadInsertContext(
 
   const localGrammars = await loadOptionalLocalGrammarContributions(document)
   const providerGrammars = await loadProviderGrammarContributions(document)
+  const installedGrammarStopwatch = startStopwatch()
   const installedGrammars = autoLoadInstalledGrammars ? loadInstalledGrammarContributions() : []
   const grammarSources = buildGrammarSourceSet(
     installedGrammars,
@@ -419,9 +443,13 @@ async function loadInsertContext(
     providerGrammars,
     autoLoadInstalledGrammars
   )
+  if (autoLoadInstalledGrammars) {
+    logInfo(`Loaded installed grammar contributions in ${formatDuration(installedGrammarStopwatch())}.`)
+  }
   logInfo(
     `Grammar sources: installed=${grammarSources.installedCount}, local=${grammarSources.localCount}, provider=${grammarSources.providerCount}`
   )
+  logInfo(`Resolved insert context in ${formatDuration(stopwatch())}.`)
 
   return {
     assertionGenerationContext: {

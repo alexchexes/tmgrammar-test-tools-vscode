@@ -1,11 +1,12 @@
 import * as vscode from 'vscode'
 import { resolveProjectRoot } from './grammarConfig'
 import { GrammarContribution } from './grammarTypes'
-import { logInfo } from './log'
+import { formatDuration, logInfo, startStopwatch } from './log'
 import { ProviderTemplateContext, resolveCommandTemplate, resolveProviderCwdTemplate } from './providerTemplates'
 import { runGrammarProvider } from './providerRunner'
 
 export async function loadProviderGrammarContributions(document: vscode.TextDocument): Promise<GrammarContribution[]> {
+  const stopwatch = startStopwatch()
   const configuration = vscode.workspace.getConfiguration('tmGrammarTestTools', document.uri)
   const configuredCommand = configuration.get<string>('grammarProvider.command')?.trim()
 
@@ -35,6 +36,7 @@ export async function loadProviderGrammarContributions(document: vscode.TextDocu
       .map((grammar) => grammar.path)
       .join(', ')}${grammars.length > 5 ? ', ...' : ''}`
   )
+  logInfo(`Grammar provider completed in ${formatDuration(stopwatch())}.`)
 
   return grammars
 }
