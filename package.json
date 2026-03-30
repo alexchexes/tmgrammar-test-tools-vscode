@@ -34,6 +34,18 @@
         "title": "TM Grammar Test Tools: Insert Line Assertions (Minimal)"
       },
       {
+        "command": "tmGrammarTestTools.replaceLineAssertions",
+        "title": "TM Grammar Test Tools: Replace Line Assertions"
+      },
+      {
+        "command": "tmGrammarTestTools.replaceLineAssertionsFull",
+        "title": "TM Grammar Test Tools: Replace Line Assertions (Full)"
+      },
+      {
+        "command": "tmGrammarTestTools.replaceLineAssertionsMinimal",
+        "title": "TM Grammar Test Tools: Replace Line Assertions (Minimal)"
+      },
+      {
         "command": "tmGrammarTestTools.insertRangeAssertions",
         "title": "TM Grammar Test Tools: Insert Range Assertions"
       },

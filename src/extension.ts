@@ -6,6 +6,7 @@ import {
   generateLineAssertionBlock,
   generateRangeAssertionBlock
 } from './assertionGenerator'
+import { mergeSafeRefreshAssertionLines } from './assertionRefresh'
 import { collectAssertionCodeActionSpecs } from './codeActions'
 import { collectLineCodeLensSpecs } from './codeLens'
 import { codeLensControllerDisposable, onDidChangeCodeLenses, refreshCodeLenses } from './codeLensController'
@@ -32,6 +33,11 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertLineAssertions', 'line'))
   context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertLineAssertionsFull', 'line', 'full'))
   context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertLineAssertionsMinimal', 'line', 'minimal'))
+  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.replaceLineAssertions', 'line', undefined, 'replace'))
+  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.replaceLineAssertionsFull', 'line', 'full', 'replace'))
+  context.subscriptions.push(
+    registerInsertCommand('tmGrammarTestTools.replaceLineAssertionsMinimal', 'line', 'minimal', 'replace')
+  )
   context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertRangeAssertions', 'range'))
   context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertRangeAssertionsFull', 'range', 'full'))
   context.subscriptions.push(
@@ -46,7 +52,8 @@ export function deactivate(): void {}
 function registerInsertCommand(
   commandId: string,
   targetMode: 'line' | 'range',
-  scopeModeOverride?: ScopeMode
+  scopeModeOverride?: ScopeMode,
+  lineRefreshMode: LineRefreshMode = 'safe'
 ): vscode.Disposable {
   return vscode.commands.registerTextEditorCommand(commandId, async (editor, _edit, args) => {
     const commandArgs = parseInsertCommandArgs(args)
@@ -59,7 +66,7 @@ function registerInsertCommand(
     }
 
     await runInsertCommand(async () => {
-      await insertLineAssertions(editor, scopeModeOverride, commandArgs.targetSourceDocumentLine)
+      await insertLineAssertions(editor, scopeModeOverride, lineRefreshMode, commandArgs.targetSourceDocumentLine)
     })
   })
 }
@@ -158,6 +165,7 @@ function registerCodeLensProvider(): vscode.Disposable {
 async function insertLineAssertions(
   editor: vscode.TextEditor,
   scopeModeOverride?: ScopeMode,
+  lineRefreshMode: LineRefreshMode = 'safe',
   targetSourceDocumentLine?: number
 ): Promise<void> {
   const context = await loadInsertContext(editor, scopeModeOverride, 'line')
@@ -193,15 +201,26 @@ async function insertLineAssertions(
       context.assertionGenerationContext.commentToken
     )
     const hasExistingBlock = assertionBlock.endLineExclusive > assertionBlock.startLine
+    const existingAssertionLines = hasExistingBlock
+      ? collectAssertionLines(context.document, assertionBlock.startLine, assertionBlock.endLineExclusive)
+      : []
+    const refreshedAssertionLines =
+      lineRefreshMode === 'safe'
+        ? mergeSafeRefreshAssertionLines(
+            context.assertionGenerationContext.commentToken,
+            existingAssertionLines,
+            assertionLines
+          )
+        : assertionLines
 
-    if (assertionLines.length === 0 && !hasExistingBlock) {
+    if (refreshedAssertionLines.length === 0 && !hasExistingBlock) {
       continue
     }
 
     updates.push({
       assertionBlock,
       editMode: 'replace',
-      assertionLines,
+      assertionLines: refreshedAssertionLines,
       targetSourceLine
     })
   }
@@ -293,7 +312,11 @@ async function insertRangeAssertions(editor: vscode.TextEditor, scopeModeOverrid
     const assertionLines =
       editMode === 'append'
         ? appendMissingAssertionLines(existingAssertionLines, generated.assertionLines)
-        : generated.assertionLines
+        : mergeSafeRefreshAssertionLines(
+            context.assertionGenerationContext.commentToken,
+            existingAssertionLines,
+            generated.assertionLines
+          )
 
     if (assertionLines.length === 0 && (!hasExistingBlock || editMode === 'append')) {
       skipReasons.push(
@@ -322,16 +345,16 @@ async function insertRangeAssertions(editor: vscode.TextEditor, scopeModeOverrid
   let editApplied = false
   editApplied = await editor.edit((editBuilder) => {
     for (const update of updates) {
-        applyAssertionEdit(
-          context.document,
-          editBuilder,
-          update.targetSourceLine.documentLine,
-          update.assertionBlock,
-          update.assertionLines,
-          update.editMode
-        )
-      }
-    })
+      applyAssertionEdit(
+        context.document,
+        editBuilder,
+        update.targetSourceLine.documentLine,
+        update.assertionBlock,
+        update.assertionLines,
+        update.editMode
+      )
+    }
+  })
 
   if (!editApplied) {
     throw new Error('The editor rejected the assertion update.')
@@ -578,3 +601,5 @@ function describeEmptyRangeTarget(selectionTarget: ReturnType<typeof collectSele
 
   return `line ${lineNumber}: the selected range resolved to no tokenized content`
 }
+
+type LineRefreshMode = 'replace' | 'safe'

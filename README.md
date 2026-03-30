@@ -14,6 +14,9 @@ Proof-of-concept VS Code extension for generating caret assertions in TextMate s
    - `TM Grammar Test Tools: Insert Line Assertions`
    - `TM Grammar Test Tools: Insert Line Assertions (Full)`
    - `TM Grammar Test Tools: Insert Line Assertions (Minimal)`
+   - `TM Grammar Test Tools: Replace Line Assertions`
+   - `TM Grammar Test Tools: Replace Line Assertions (Full)`
+   - `TM Grammar Test Tools: Replace Line Assertions (Minimal)`
    - `TM Grammar Test Tools: Insert Range Assertions`
    - `TM Grammar Test Tools: Insert Range Assertions (Full)`
    - `TM Grammar Test Tools: Insert Range Assertions (Minimal)`
@@ -32,6 +35,8 @@ Proof-of-concept VS Code extension for generating caret assertions in TextMate s
 - `Line` commands are line-oriented:
    - with empty selection they target the line at each cursor
    - with non-empty selection they regenerate every touched source line top-to-bottom, and assertion lines map back to their owning source line.
+- `Insert Line` and `Insert Range` commands use safe refresh by default: simple positive assertions are regenerated, while negative or mixed assertion lines are preserved.
+- `Replace Line` commands are destructive and replace the entire generated assertion block for the targeted line.
 - `Range` commands are range-oriented and operate on source text:
    - with non-empty selection they target the selected characters
    - with empty selection they resolve the token at the cursor position(s) and use that token's range.
@@ -41,6 +46,7 @@ Proof-of-concept VS Code extension for generating caret assertions in TextMate s
 - `tmGrammarTestTools.compactRanges` defaults to `true` and merges disjoint caret ranges when they share the same rendered scope list and the tmgrammar assertion syntax can represent the merge.
 - `tmGrammarTestTools.enableCodeActions` defaults to `true` and adds Code Actions for inserting line or range assertions at the current cursor or selection.
 - `tmGrammarTestTools.enableCodeLens` defaults to `true` and adds line-oriented CodeLens commands above non-empty source lines.
+- Code Actions and CodeLens expose the safe `Insert` commands. The destructive `Replace Line` commands are available from the command palette.
 
 ## Grammar Sources
 
