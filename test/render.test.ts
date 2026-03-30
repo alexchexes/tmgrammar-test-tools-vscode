@@ -56,6 +56,26 @@ test('full mode compacts disjoint caret ranges and stays compatible with vscode-
   ])
 })
 
+test('rendering preserves tabs in caret padding and stays compatible with vscode-tmgrammar-test parsing', () => {
+  const assertionLines = renderAssertionBlock('//', 'ab\tcd\tef', [token(5, 7, 'scope.target')], {
+    compactRanges: true,
+    scopeMode: 'full',
+    headerScope: 'source.example'
+  })
+
+  assert.deepEqual(assertionLines, ['//\t  ^^ scope.target'])
+
+  const parsedAssertions = parseScopeAssertion(2, 2, assertionLines[0])
+  assert.deepEqual(parsedAssertions, [
+    {
+      from: 5,
+      to: 7,
+      scopes: ['scope.target'],
+      exclude: []
+    }
+  ])
+})
+
 test('minimal mode emits shared parents once and narrower child scopes as deltas', () => {
   const assertionLines = renderAssertionBlock(
     '#',
@@ -150,6 +170,38 @@ test('generated fixture assertions round-trip through vscode-tmgrammar-test in b
     const parsedTestCase = parseGrammarTestCase(testCase)
     const failures = await runGrammarTestCase(registry, parsedTestCase)
     assert.deepEqual(failures, [], `Expected no vscode-tmgrammar-test failures for ${scopeMode} mode.`)
+  }
+})
+
+test('tabbed source lines round-trip through vscode-tmgrammar-test in both full and minimal modes', async () => {
+  const fixtureGrammarPath = path.resolve(__dirname, '../../fixtures/simple-grammar/syntaxes/simple-poc.tmLanguage.json')
+  const grammars = [{ path: fixtureGrammarPath, scopeName: 'source.simple-poc' }]
+  const sourceLines = [
+    { documentLine: 1, text: '' },
+    { documentLine: 2, text: '\tconst answer = "ok"' }
+  ]
+  const registry = createRegistry(grammars)
+
+  for (const scopeMode of ['full', 'minimal'] as const) {
+    const tokens = await tokenizeSourceLine(grammars, 'source.simple-poc', sourceLines, 1)
+    const assertionLines = renderAssertionBlock('//', '\tconst answer = "ok"', tokens, {
+      compactRanges: true,
+      scopeMode,
+      headerScope: 'source.simple-poc'
+    })
+
+    assert.ok(assertionLines.length > 0)
+
+    const testCase = [
+      '// SYNTAX TEST "source.simple-poc" "generated tabbed test"',
+      '',
+      '\tconst answer = "ok"',
+      ...assertionLines
+    ].join('\n')
+
+    const parsedTestCase = parseGrammarTestCase(testCase)
+    const failures = await runGrammarTestCase(registry, parsedTestCase)
+    assert.deepEqual(failures, [], `Expected no vscode-tmgrammar-test failures for tabbed ${scopeMode} mode.`)
   }
 })
 
