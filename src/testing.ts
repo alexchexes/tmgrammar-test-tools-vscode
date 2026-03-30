@@ -49,12 +49,22 @@ export function registerTestingController(context: vscode.ExtensionContext): vsc
     },
     true
   )
+  const debugProfile = controller.createRunProfile(
+    'Debug',
+    vscode.TestRunProfileKind.Debug,
+    async (request, cancellationToken) => {
+      logInfo('Debug test execution currently uses the same runner as Run; debugger integration is not implemented.')
+      await runTests(controller, request, cancellationToken)
+    },
+    true
+  )
 
   void refreshAllOpenDocuments(controller, runnableLineCache)
 
   const subscriptions: vscode.Disposable[] = [
     controller,
     runProfile,
+    debugProfile,
     vscode.workspace.onDidOpenTextDocument((document) => {
       scheduleRefresh(controller, pendingRefreshes, runnableLineCache, document)
     }),

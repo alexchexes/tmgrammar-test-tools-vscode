@@ -54,6 +54,7 @@ Proof-of-concept VS Code extension for generating caret assertions in TextMate s
 - Open syntax test files are discovered in VS Code's Testing view.
 - The extension creates one test item per open syntax test file and one child item per source line that has an assertion block.
 - You can run a whole file or a single asserted source line from the Testing view or gutter.
+- The Testing UI also exposes a `Debug` action. For now it uses the same runner as `Run`; debugger integration is not implemented yet.
 - Test runs use the current editor text, **including unsaved edits**.
 - Failures are shown in the Test Results UI. The `Go to Error` action works on individual failures and tries to select the failing assertion range on the source line.
 
