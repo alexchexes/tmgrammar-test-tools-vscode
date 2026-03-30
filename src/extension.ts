@@ -7,13 +7,8 @@ import {
   generateRangeAssertionBlock
 } from './assertionGenerator'
 import { collectAssertionCodeActionSpecs } from './codeActions'
-import { collectLineCodeLensSpecs, shouldSuspendLineCodeLensDuringEdit } from './codeLens'
-import {
-  isCodeLensSuspendedForSourceLine,
-  onDidChangeCodeLenses,
-  resumeCodeLensForSourceLine,
-  suspendCodeLensForSourceLine
-} from './codeLensController'
+import { collectLineCodeLensSpecs } from './codeLens'
+import { codeLensControllerDisposable, onDidChangeCodeLenses, refreshCodeLenses } from './codeLensController'
 import { loadGrammarContributions, tryResolveConfigPath } from './grammarConfig'
 import { buildGrammarSourceSet } from './grammarSources'
 import { loadProviderGrammarContributions } from './grammarProvider'
@@ -33,6 +28,7 @@ import {
 
 export function activate(context: vscode.ExtensionContext): void {
   registerLogger(context)
+  context.subscriptions.push(codeLensControllerDisposable)
   context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertLineAssertions', 'line'))
   context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertLineAssertionsFull', 'line', 'full'))
   context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertLineAssertionsMinimal', 'line', 'minimal'))
@@ -53,18 +49,18 @@ function registerInsertCommand(
   scopeModeOverride?: ScopeMode
 ): vscode.Disposable {
   return vscode.commands.registerTextEditorCommand(commandId, async (editor, _edit, args) => {
-    try {
-      if (targetMode === 'range') {
-        await insertRangeAssertions(editor, scopeModeOverride)
-        return
-      }
+    const commandArgs = parseInsertCommandArgs(args)
 
-      await insertLineAssertions(editor, scopeModeOverride, parseInsertCommandArgs(args).targetSourceDocumentLine)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      logError(message)
-      void vscode.window.showErrorMessage(message)
+    if (targetMode === 'range') {
+      await runInsertCommand(async () => {
+        await insertRangeAssertions(editor, scopeModeOverride)
+      })
+      return
     }
+
+    await runInsertCommand(async () => {
+      await insertLineAssertions(editor, scopeModeOverride, commandArgs.targetSourceDocumentLine)
+    })
   })
 }
 
@@ -144,24 +140,16 @@ function registerCodeLensProvider(): vscode.Disposable {
           return []
         }
 
-        const assertionBlocks = sourceLines.map((sourceLine) => ({
-          ...findAssertionBlock(document, sourceLine.documentLine, header.commentToken),
-          sourceDocumentLine: sourceLine.documentLine
-        }))
-
-        return collectLineCodeLensSpecs(sourceLines, document.lineCount, assertionBlocks)
-          .filter((spec) => !isCodeLensSuspendedForSourceLine(spec.sourceDocumentLine))
-          .map((spec) => {
-            const position =
-              spec.anchorLine === document.lineCount
-                ? new vscode.Position(document.lineCount, 0)
-                : document.lineAt(spec.anchorLine).range.end
-            return new vscode.CodeLens(new vscode.Range(position, position), {
-              arguments: [{ targetSourceDocumentLine: spec.sourceDocumentLine }],
-              command: spec.commandId,
-              title: spec.title
-            })
+        return collectLineCodeLensSpecs(sourceLines).map((spec) => {
+          // Anchor at the end of the line so inserts before the line do not temporarily remap
+          // the lens to the insertion boundary while VS Code refreshes CodeLens positions.
+          const position = document.lineAt(spec.sourceDocumentLine).range.end
+          return new vscode.CodeLens(new vscode.Range(position, position), {
+            arguments: [{ targetSourceDocumentLine: spec.sourceDocumentLine }],
+            command: spec.commandId,
+            title: spec.title
           })
+        })
       }
     }
   )
@@ -172,91 +160,89 @@ async function insertLineAssertions(
   scopeModeOverride?: ScopeMode,
   targetSourceDocumentLine?: number
 ): Promise<void> {
-  const shouldSuspendCodeLens =
-    targetSourceDocumentLine !== undefined && shouldTemporarilyHideCodeLens(editor.document, targetSourceDocumentLine)
+  const context = await loadInsertContext(editor, scopeModeOverride, 'line')
+  const targetSourceLines =
+    targetSourceDocumentLine === undefined
+      ? findTargetSourceLinesForSelections(context.sourceLines, editor.selections.map(toSelectionLineTarget))
+      : context.sourceLines.filter((line) => line.documentLine === targetSourceDocumentLine)
+  logInfo(
+    `Target source lines: ${targetSourceLines.length > 0 ? targetSourceLines.map((line) => line.documentLine + 1).join(', ') : '<none>'}`
+  )
 
-  if (shouldSuspendCodeLens && targetSourceDocumentLine !== undefined) {
-    suspendCodeLensForSourceLine(targetSourceDocumentLine)
+  if (targetSourceLines.length === 0) {
+    throw new Error('Place the cursor on a source line or its assertion block, or select source lines to update.')
   }
 
-  try {
-    const context = await loadInsertContext(editor, scopeModeOverride, 'line')
-    const targetSourceLines =
-      targetSourceDocumentLine === undefined
-        ? findTargetSourceLinesForSelections(context.sourceLines, editor.selections.map(toSelectionLineTarget))
-        : context.sourceLines.filter((line) => line.documentLine === targetSourceDocumentLine)
-    logInfo(
-      `Target source lines: ${targetSourceLines.length > 0 ? targetSourceLines.map((line) => line.documentLine + 1).join(', ') : '<none>'}`
+  const sourceLineIndexes = new Map(context.sourceLines.map((line, index) => [line.documentLine, index]))
+  const updates: AssertionUpdate[] = []
+
+  for (const targetSourceLine of targetSourceLines) {
+    const targetSourceIndex = sourceLineIndexes.get(targetSourceLine.documentLine)
+    if (targetSourceIndex === undefined) {
+      continue
+    }
+
+    const assertionLines = await generateLineAssertionBlock(
+      context.assertionGenerationContext,
+      targetSourceIndex,
+      context.assertionGenerationOptions
     )
+    const assertionBlock = findAssertionBlock(
+      context.document,
+      targetSourceLine.documentLine,
+      context.assertionGenerationContext.commentToken
+    )
+    const hasExistingBlock = assertionBlock.endLineExclusive > assertionBlock.startLine
 
-    if (targetSourceLines.length === 0) {
-      throw new Error('Place the cursor on a source line or its assertion block, or select source lines to update.')
+    if (assertionLines.length === 0 && !hasExistingBlock) {
+      continue
     }
 
-    const sourceLineIndexes = new Map(context.sourceLines.map((line, index) => [line.documentLine, index]))
-    const updates: AssertionUpdate[] = []
-
-    for (const targetSourceLine of targetSourceLines) {
-      const targetSourceIndex = sourceLineIndexes.get(targetSourceLine.documentLine)
-      if (targetSourceIndex === undefined) {
-        continue
-      }
-
-      const assertionLines = await generateLineAssertionBlock(
-        context.assertionGenerationContext,
-        targetSourceIndex,
-        context.assertionGenerationOptions
-      )
-      const assertionBlock = findAssertionBlock(
-        context.document,
-        targetSourceLine.documentLine,
-        context.assertionGenerationContext.commentToken
-      )
-      const hasExistingBlock = assertionBlock.endLineExclusive > assertionBlock.startLine
-
-      if (assertionLines.length === 0 && !hasExistingBlock) {
-        continue
-      }
-
-      updates.push({
-        assertionBlock,
-        editMode: 'replace',
-        assertionLines,
-        targetSourceLine
-      })
-    }
-
-    if (updates.length === 0) {
-      void vscode.window.showInformationMessage('No assertions were generated for the targeted source lines.')
-      return
-    }
-
-    let editApplied = false
-    editApplied = await editor.edit((editBuilder) => {
-      for (const update of updates) {
-        applyAssertionEdit(
-          context.document,
-          editBuilder,
-          update.targetSourceLine.documentLine,
-          update.assertionBlock,
-          update.assertionLines,
-          update.editMode
-        )
-      }
+    updates.push({
+      assertionBlock,
+      editMode: 'replace',
+      assertionLines,
+      targetSourceLine
     })
+  }
 
-    if (!editApplied) {
-      throw new Error('The editor rejected the assertion update.')
-    }
+  if (updates.length === 0) {
+    void vscode.window.showInformationMessage('No assertions were generated for the targeted source lines.')
+    return
+  }
 
-    vscode.window.setStatusBarMessage(
-      `Updated assertions for ${updates.length} source line${updates.length === 1 ? '' : 's'}.`,
-      3000
-    )
-  } finally {
-    if (shouldSuspendCodeLens && targetSourceDocumentLine !== undefined) {
-      resumeCodeLensForSourceLine(targetSourceDocumentLine)
+  let editApplied = false
+  editApplied = await editor.edit((editBuilder) => {
+    for (const update of updates) {
+      applyAssertionEdit(
+        context.document,
+        editBuilder,
+        update.targetSourceLine.documentLine,
+        update.assertionBlock,
+        update.assertionLines,
+        update.editMode
+      )
     }
+  })
+
+  if (!editApplied) {
+    throw new Error('The editor rejected the assertion update.')
+  }
+
+  refreshCodeLenses()
+  vscode.window.setStatusBarMessage(
+    `Updated assertions for ${updates.length} source line${updates.length === 1 ? '' : 's'}.`,
+    3000
+  )
+}
+
+async function runInsertCommand(operation: () => Promise<void>): Promise<void> {
+  try {
+    await operation()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    logError(message)
+    void vscode.window.showErrorMessage(message)
   }
 }
 
@@ -351,6 +337,7 @@ async function insertRangeAssertions(editor: vscode.TextEditor, scopeModeOverrid
     throw new Error('The editor rejected the assertion update.')
   }
 
+  refreshCodeLenses()
   vscode.window.setStatusBarMessage(
     `Updated assertions for ${updates.length} source line${updates.length === 1 ? '' : 's'} from the current range.`,
     3000
@@ -487,23 +474,6 @@ function parseInsertCommandArgs(value: unknown): { targetSourceDocumentLine?: nu
   }
 
   return {}
-}
-
-function shouldTemporarilyHideCodeLens(document: vscode.TextDocument, targetSourceDocumentLine: number): boolean {
-  if (document.lineCount === 0) {
-    return false
-  }
-
-  let header
-  try {
-    header = parseHeaderLine(document.lineAt(0).text)
-  } catch {
-    return false
-  }
-
-  const assertionBlock = findAssertionBlock(document, targetSourceDocumentLine, header.commentToken)
-  const lines = Array.from({ length: document.lineCount }, (_, lineNumber) => document.lineAt(lineNumber).text)
-  return shouldSuspendLineCodeLensDuringEdit(lines, assertionBlock)
 }
 
 function applyAssertionEdit(
