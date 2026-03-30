@@ -11,7 +11,11 @@ import { collectAssertionCodeActionSpecs } from './codeActions'
 import { collectLineCodeLensSpecs } from './codeLens'
 import { codeLensControllerDisposable, onDidChangeCodeLenses, refreshCodeLenses } from './codeLensController'
 import { loadGrammarContributions, tryResolveConfigPath } from './grammarConfig'
-import { buildGrammarSourceSet } from './grammarSources'
+import {
+  buildDetailedGrammarSourceEntries,
+  buildGrammarSourceSet,
+  SourcedGrammarContribution
+} from './grammarSources'
 import { loadProviderGrammarContributions } from './grammarProvider'
 import { loadInstalledGrammarContributions } from './installedGrammars'
 import { formatDuration, logError, logInfo, logRunBoundary, registerLogger, startStopwatch } from './log'
@@ -27,6 +31,7 @@ import {
   SourceLine
 } from './syntaxTest'
 import { registerTestingController } from './testing'
+import { resolveGrammarContributionScopes } from './textmate'
 
 export function activate(context: vscode.ExtensionContext): void {
   registerLogger(context)
@@ -424,6 +429,7 @@ async function loadInsertContext(
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri)
   const configuration = vscode.workspace.getConfiguration('tmGrammarTestTools', document.uri)
   const autoLoadInstalledGrammars = configuration.get<boolean>('autoLoadInstalledGrammars') ?? true
+  const logGrammarDetails = configuration.get<boolean>('logGrammarDetails') ?? false
   const assertionGenerationOptions: AssertionGenerationOptions = {
     compactRanges: configuration.get<boolean>('compactRanges') ?? true,
     scopeMode: resolveScopeMode(configuration.get<string>('scopeMode'), scopeModeOverride)
@@ -457,25 +463,164 @@ async function loadInsertContext(
     providerGrammars,
     autoLoadInstalledGrammars
   )
+  const unresolvedSourcedGrammars = buildDetailedGrammarSourceEntries(
+    installedGrammars,
+    localGrammars,
+    providerGrammars,
+    autoLoadInstalledGrammars
+  )
+  const sourcedGrammars = await resolveSourcedGrammarEntries(unresolvedSourcedGrammars)
   if (autoLoadInstalledGrammars) {
     logInfo(`Loaded installed grammar contributions in ${formatDuration(installedGrammarStopwatch())}.`)
   }
   logInfo(
     `Grammar sources: installed=${grammarSources.installedCount}, local=${grammarSources.localCount}, provider=${grammarSources.providerCount}`
   )
+  logEssentialGrammarSummary(sourcedGrammars, header.scopeName)
   logInfo(`Resolved insert context in ${formatDuration(stopwatch())}.`)
 
   return {
     assertionGenerationContext: {
       commentToken: header.commentToken,
-      grammars: grammarSources.grammars,
+      grammars: sourcedGrammars.map((entry) => entry.grammar),
+      logGrammarDetails,
+      onGrammarTrace: logGrammarDetails ? (lines) => lines.forEach((line) => logInfo(line)) : undefined,
       scopeName: header.scopeName,
-      sourceLines
+      sourceLines,
+      sourcedGrammars
     },
     assertionGenerationOptions,
     document,
     sourceLines
   }
+}
+
+function logEssentialGrammarSummary(
+  sourcedGrammars: readonly SourcedGrammarContribution[],
+  requestedScopeName: string
+): void {
+  const baseCandidates = collectScopeCandidates(sourcedGrammars, requestedScopeName)
+  if (baseCandidates.length === 0) {
+    logInfo(`Base grammar winner: ${requestedScopeName} -> <not found>`)
+    return
+  }
+
+  const baseWinner = baseCandidates[baseCandidates.length - 1]
+  logInfo(`Base grammar winner: ${requestedScopeName} -> ${formatSourcedGrammarEntry(baseWinner)}`)
+
+  if (baseCandidates.length > 1) {
+    logInfo(
+      `Base grammar lower-priority candidates: ${baseCandidates
+        .slice(0, -1)
+        .map((entry) => formatSourcedGrammarEntry(entry))
+        .join('; ')}`
+    )
+  }
+
+  const { inheritedCount, specificInjections } = collectDirectInjectionWinners(sourcedGrammars, requestedScopeName)
+  if (specificInjections.length > 0) {
+    logInfo(
+      `Direct injections for ${requestedScopeName}: ${specificInjections
+        .map((entry) => `${entry.grammar.scopeName || '<no scope>'} -> ${formatSourcedGrammarEntry(entry)}`)
+        .join('; ')}`
+    )
+  } else {
+    logInfo(`Direct injections for ${requestedScopeName}: <none>`)
+  }
+
+  if (inheritedCount > 0) {
+    logInfo(
+      `Additional inherited injections via broader scopes: ${inheritedCount} winner(s). Enable tmGrammarTestTools.logGrammarDetails for the full trace.`
+    )
+  }
+}
+
+function collectDirectInjectionWinners(
+  sourcedGrammars: readonly SourcedGrammarContribution[],
+  requestedScopeName: string
+): {
+  inheritedCount: number
+  specificInjections: readonly SourcedGrammarContribution[]
+} {
+  const scopeChain = getScopeChain(requestedScopeName)
+  const broaderScopes = new Set(scopeChain.slice(0, -1))
+  const specificWinners: SourcedGrammarContribution[] = []
+  let inheritedCount = 0
+
+  for (const [, candidates] of groupInjectionCandidatesByScope(sourcedGrammars, scopeChain)) {
+    const winner = candidates[candidates.length - 1]
+    const injectTo = winner.grammar.injectTo ?? []
+    if (injectTo.includes(requestedScopeName)) {
+      specificWinners.push(winner)
+      continue
+    }
+
+    if (injectTo.some((scope) => broaderScopes.has(scope))) {
+      inheritedCount++
+    }
+  }
+
+  specificWinners.sort((left, right) => left.grammar.scopeName.localeCompare(right.grammar.scopeName))
+  return {
+    inheritedCount,
+    specificInjections: specificWinners
+  }
+}
+
+function collectScopeCandidates(
+  sourcedGrammars: readonly SourcedGrammarContribution[],
+  scopeName: string
+): readonly SourcedGrammarContribution[] {
+  return sourcedGrammars.filter((entry) => entry.grammar.scopeName === scopeName)
+}
+
+function groupInjectionCandidatesByScope(
+  sourcedGrammars: readonly SourcedGrammarContribution[],
+  scopeChain: readonly string[]
+): Map<string, SourcedGrammarContribution[]> {
+  const groups = new Map<string, SourcedGrammarContribution[]>()
+  for (const entry of sourcedGrammars) {
+    const injectTo = entry.grammar.injectTo ?? []
+    if (!injectTo.some((scope) => scopeChain.includes(scope))) {
+      continue
+    }
+
+    const group = groups.get(entry.grammar.scopeName)
+    if (group) {
+      group.push(entry)
+    } else {
+      groups.set(entry.grammar.scopeName, [entry])
+    }
+  }
+
+  return groups
+}
+
+function getScopeChain(scopeName: string): readonly string[] {
+  const parts = scopeName.split('.')
+  return parts.map((_, index) => parts.slice(0, index + 1).join('.'))
+}
+
+function formatSourcedGrammarEntry(entry: SourcedGrammarContribution): string {
+  const grammar = entry.grammar
+  const language = grammar.language ? ` language=${grammar.language}` : ''
+  const injectTo =
+    grammar.injectTo && grammar.injectTo.length > 0 ? ` injectTo=${grammar.injectTo.join(',')}` : ''
+  return `[${entry.source}] ${grammar.path}${language}${injectTo}`
+}
+
+async function resolveSourcedGrammarEntries(
+  entries: readonly SourcedGrammarContribution[]
+): Promise<readonly SourcedGrammarContribution[]> {
+  if (!entries.some((entry) => entry.grammar.scopeName.length === 0)) {
+    return entries
+  }
+
+  const resolvedGrammars = await resolveGrammarContributionScopes(entries.map((entry) => entry.grammar))
+  return entries.map((entry, index) => ({
+    ...entry,
+    grammar: resolvedGrammars[index]
+  }))
 }
 
 function toSelectionLineTarget(selection: vscode.Selection): SelectionLineTarget {

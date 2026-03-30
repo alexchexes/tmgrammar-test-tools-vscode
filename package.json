@@ -146,6 +146,12 @@
           "default": true,
           "scope": "resource",
           "description": "When enabled, merge disjoint caret ranges that share the same rendered scope list into a single assertion line when the syntax allows it."
+        },
+        "tmGrammarTestTools.logGrammarDetails": {
+          "type": "boolean",
+          "default": false,
+          "scope": "resource",
+          "description": "When enabled, log detailed grammar selection info in the Output panel. Assertion generation logs the actually used grammar scopes with source labels; test runs log the merged grammar load order."
         }
       }
     }

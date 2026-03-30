@@ -1,7 +1,11 @@
 import * as path from 'node:path'
 import * as vscode from 'vscode'
 import { loadGrammarContributions, tryResolveConfigPath } from './grammarConfig'
-import { buildGrammarSourceSet } from './grammarSources'
+import {
+  buildDetailedGrammarSourceEntries,
+  buildGrammarSourceSet,
+  SourcedGrammarContribution
+} from './grammarSources'
 import { loadProviderGrammarContributions } from './grammarProvider'
 import { loadInstalledGrammarContributions } from './installedGrammars'
 import { formatDuration, logError, logInfo, logRunBoundary, startStopwatch } from './log'
@@ -331,6 +335,7 @@ async function loadTestContext(document: vscode.TextDocument): Promise<{ grammar
   const stopwatch = startStopwatch()
   const configuration = vscode.workspace.getConfiguration('tmGrammarTestTools', document.uri)
   const autoLoadInstalledGrammars = configuration.get<boolean>('autoLoadInstalledGrammars') ?? true
+  const logGrammarDetails = configuration.get<boolean>('logGrammarDetails') ?? false
 
   const localConfigStopwatch = startStopwatch()
   const localGrammars = await loadOptionalLocalGrammarContributions(document)
@@ -355,6 +360,11 @@ async function loadTestContext(document: vscode.TextDocument): Promise<{ grammar
   logInfo(
     `Testing grammar sources: installed=${grammarSources.installedCount}, local=${grammarSources.localCount}, provider=${grammarSources.providerCount}`
   )
+  if (logGrammarDetails) {
+    logDetailedGrammarSourceEntries(
+      buildDetailedGrammarSourceEntries(installedGrammars, localGrammars, providerGrammars, autoLoadInstalledGrammars)
+    )
+  }
   logInfo(`Resolved test context in ${formatDuration(stopwatch())}.`)
 
   return {
@@ -561,6 +571,25 @@ function resetTestResults(controller: vscode.TestController, items: readonly vsc
   // their stale pass/fail state back to neutral.
   const run = controller.createTestRun(new vscode.TestRunRequest(items), 'Reset stale TM Grammar Test results', false)
   run.end()
+}
+
+function logDetailedGrammarSourceEntries(entries: readonly SourcedGrammarContribution[]): void {
+  if (entries.length === 0) {
+    logInfo('Grammar load order: <none>')
+    return
+  }
+
+  logInfo(`Grammar load order (${entries.length}):`)
+  for (const [index, entry] of entries.entries()) {
+    const injectTo =
+      entry.grammar.injectTo && entry.grammar.injectTo.length > 0
+        ? ` injectTo=${entry.grammar.injectTo.join(',')}`
+        : ''
+    const language = entry.grammar.language ? ` language=${entry.grammar.language}` : ''
+    logInfo(
+      `  ${index + 1}. [${entry.source}] ${entry.grammar.scopeName || '<no scope>'} -> ${entry.grammar.path}${language}${injectTo}`
+    )
+  }
 }
 
 type TestFailure = GrammarTestFailure

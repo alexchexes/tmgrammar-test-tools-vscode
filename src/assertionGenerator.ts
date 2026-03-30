@@ -1,14 +1,18 @@
+import { SourcedGrammarContribution } from './grammarSources'
 import { GrammarContribution } from './grammarTypes'
 import { RenderOptions, ScopeMode, renderAssertionBlock } from './render'
 import { CharacterRange, SelectionRangeTarget, clipTokensToRanges, resolveSelectionRanges } from './selectionTargets'
 import { SourceLine } from './syntaxTestCore'
-import { tokenizeSourceLine } from './textmate'
+import { formatTokenizationTraceLines, tokenizeSourceLine, tokenizeSourceLineWithTrace } from './textmate'
 
 export interface AssertionGenerationContext {
   commentToken: string
   grammars: readonly GrammarContribution[]
+  logGrammarDetails?: boolean
+  onGrammarTrace?: (lines: readonly string[]) => void
   scopeName: string
   sourceLines: readonly SourceLine[]
+  sourcedGrammars?: readonly SourcedGrammarContribution[]
 }
 
 export interface AssertionGenerationOptions {
@@ -39,7 +43,7 @@ export async function generateLineAssertionBlock(
   options: AssertionGenerationOptions
 ): Promise<readonly string[]> {
   const sourceLine = context.sourceLines[targetSourceIndex]
-  const tokens = await tokenizeSourceLine(context.grammars, context.scopeName, context.sourceLines, targetSourceIndex)
+  const tokens = await tokenizeSourceLineForGeneration(context, targetSourceIndex)
 
   return renderAssertionBlock(context.commentToken, sourceLine.text, tokens, toRenderOptions(context, options))
 }
@@ -51,7 +55,7 @@ export async function generateRangeAssertionBlock(
   options: AssertionGenerationOptions
 ): Promise<GeneratedRangeAssertionBlock> {
   const sourceLine = context.sourceLines[targetSourceIndex]
-  const tokens = await tokenizeSourceLine(context.grammars, context.scopeName, context.sourceLines, targetSourceIndex)
+  const tokens = await tokenizeSourceLineForGeneration(context, targetSourceIndex)
   const ranges = resolveSelectionRanges(tokens, sourceLine.text, target)
 
   if (ranges.length === 0) {
@@ -78,4 +82,26 @@ function toRenderOptions(context: AssertionGenerationContext, options: Assertion
     headerScope: context.scopeName,
     scopeMode: options.scopeMode
   }
+}
+
+async function tokenizeSourceLineForGeneration(
+  context: AssertionGenerationContext,
+  targetSourceIndex: number
+): Promise<readonly import('vscode-textmate').IToken[]> {
+  if (!context.logGrammarDetails) {
+    return tokenizeSourceLine(context.grammars, context.scopeName, context.sourceLines, targetSourceIndex)
+  }
+
+  const sourceLine = context.sourceLines[targetSourceIndex]
+  const result = await tokenizeSourceLineWithTrace(
+    context.grammars,
+    context.scopeName,
+    context.sourceLines,
+    targetSourceIndex,
+    context.sourcedGrammars
+  )
+
+  context.onGrammarTrace?.(formatTokenizationTraceLines(result.trace, sourceLine.documentLine + 1))
+
+  return result.tokens
 }
