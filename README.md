@@ -1,8 +1,8 @@
 # TM Grammar Test Tools
 
-Proof-of-concept VS Code extension for generating caret assertions in TextMate syntax tests.
+VS Code extension for generating, refreshing, and running assertions in TextMate syntax tests. It is designed to work alongside [`vscode-tmgrammar-test`](https://github.com/PanAeon/vscode-tmgrammar-test).
 
-## Current POC flow
+## What it does
 
 1. Open a syntax test file whose first line matches:
 
@@ -39,8 +39,9 @@ Proof-of-concept VS Code extension for generating caret assertions in TextMate s
 - `Replace Line` commands are destructive and replace the entire generated assertion block for the targeted line.
 - `Range` commands are range-oriented and operate on source text:
    - with non-empty selection they target the selected characters
-   - with empty selection they resolve the token at the cursor position(s) and use that token's range.
-- `Range` commands skip blank or whitespace-only source lines only for range-derived targets, and they refuse partial-range replacement on lines that already have assertion blocks.
+   - with empty selection they resolve the token at the cursor position(s) and use that token's range. For example, if cursor is in the middle of `quux;`, it will expand to full `quux` token.
+   - when only part of a line is selected and the source line already has assertions, it inserts new assertions into the existing block instead of replacing it.
+- `Range` commands skip blank or whitespace-only source lines only for range-derived targets.
 - `tmGrammarTestTools.scopeMode` can be `full` or `minimal`. The generic `Line` and `Range` commands use that setting. The explicit `Full` and `Minimal` commands override it for that invocation.
 - `minimal` drops the header scope only when every token shares it and there is at least one more specific scope to show, then emits broader shared scopes once before narrower child scopes.
 - `tmGrammarTestTools.compactRanges` defaults to `true` and merges disjoint caret ranges when they share the same rendered scope list and the tmgrammar assertion syntax can represent the merge.
@@ -192,7 +193,7 @@ The current suite covers renderer compaction/minimal-mode behavior, selection ta
 
 This repo also includes a minimal fixture grammar under `fixtures/simple-grammar`.
 
-To try the POC inside this workspace:
+To try it inside this repo workspace:
 
 1. Press `F5` to launch the extension host.
 2. Open `fixtures/simple-grammar/tests/example.simple-poc`.
