@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "publisher": "AlexChexes",
   "license": "MIT",
-  "preview": true,
+  "preview": false,
   "icon": "media/icon.png",
   "homepage": "https://github.com/alexchexes/vscode-tmgrammar-test-tools",
   "bugs": {
