@@ -23,12 +23,13 @@ interface CliArguments {
   help: boolean
   lineTargets: number[]
   logLevel: 'silent' | 'info' | 'debug'
-  outputMode: 'json' | 'plain'
+  outputMode: 'json' | 'plain' | 'compare'
   providerCommand?: string
   providerCwd?: string
   providerTimeoutMs?: number
   rangeTargets: RangeSpec[]
   scopeMode: ScopeMode
+  scopeModeProvided: boolean
 }
 
 interface RangeSpec {
@@ -49,6 +50,7 @@ type CliTargetOutput = CliLineTargetOutput | CliRangeTargetOutput
 
 interface CliLineTargetOutput {
   assertionLines: readonly string[]
+  comparison?: CliScopeModeComparison
   documentLine: number
   kind: 'line'
   sourceText: string
@@ -56,10 +58,16 @@ interface CliLineTargetOutput {
 
 interface CliRangeTargetOutput {
   assertionLines: readonly string[]
+  comparison?: CliScopeModeComparison
   documentLine: number
   kind: 'range'
   ranges: readonly { endIndex: number; startIndex: number }[]
   sourceText: string
+}
+
+interface CliScopeModeComparison {
+  fullAssertionLines: readonly string[]
+  minimalAssertionLines: readonly string[]
 }
 
 export async function runCli(argv: readonly string[]): Promise<CliOutput> {
@@ -190,8 +198,10 @@ export async function runCli(argv: readonly string[]): Promise<CliOutput> {
     }
 
     const sourceLine = sourceLines[sourceLineIndex]
+    const assertionLines = await generateLineAssertionBlock(generationContext, sourceLineIndex, generationOptions)
     targets.push({
-      assertionLines: await generateLineAssertionBlock(generationContext, sourceLineIndex, generationOptions),
+      assertionLines,
+      comparison: args.outputMode === 'compare' ? await generateLineComparison(generationContext, sourceLineIndex, args) : undefined,
       documentLine,
       kind: 'line',
       sourceText: sourceLine.text
@@ -214,6 +224,8 @@ export async function runCli(argv: readonly string[]): Promise<CliOutput> {
     )
     targets.push({
       assertionLines: generated.assertionLines,
+      comparison:
+        args.outputMode === 'compare' ? await generateRangeComparison(generationContext, sourceLineIndex, rangeTarget, args) : undefined,
       documentLine: rangeTarget.sourceLine.documentLine + 1,
       kind: 'range',
       ranges: generated.ranges,
@@ -270,7 +282,8 @@ function parseArguments(argv: readonly string[]): CliArguments {
     logLevel: 'silent',
     outputMode: 'json',
     rangeTargets: [],
-    scopeMode: 'full'
+    scopeMode: 'full',
+    scopeModeProvided: false
   }
 
   for (let index = 0; index < argv.length; index++) {
@@ -298,6 +311,7 @@ function parseArguments(argv: readonly string[]): CliArguments {
         break
       case '--scope-mode':
         args.scopeMode = parseScopeMode(readValue(argv, ++index, '--scope-mode'))
+        args.scopeModeProvided = true
         break
       case '--compact-ranges':
         args.compactRanges = true
@@ -310,6 +324,9 @@ function parseArguments(argv: readonly string[]): CliArguments {
         break
       case '--plain':
         args.outputMode = 'plain'
+        break
+      case '--compare':
+        args.outputMode = 'compare'
         break
       case '--log-level':
         args.logLevel = parseLogLevel(readValue(argv, ++index, '--log-level'))
@@ -331,6 +348,10 @@ function parseArguments(argv: readonly string[]): CliArguments {
 
   if (args.lineTargets.length === 0 && args.rangeTargets.length === 0) {
     throw new Error(`Specify at least one --line or --range target.\n${buildHelpText()}`)
+  }
+
+  if (args.outputMode === 'compare' && args.scopeModeProvided) {
+    throw new Error('--compare cannot be combined with --scope-mode because it always prints both minimal and full output.')
   }
 
   return args
@@ -424,15 +445,24 @@ function buildHelpText(): string {
     '  --log-level <silent|info|debug>    Print diagnostics to stderr. Defaults to silent.',
     '  --json                             Print structured JSON output. This is the default.',
     '  --plain                            Print only generated assertion lines.',
+    '  --compare                          Print both minimal and full assertion blocks in plain text.',
     '  --compact-ranges                   Enable disjoint caret compaction. Defaults to enabled.',
     '  --no-compact-ranges                Disable disjoint caret compaction.',
     '  --help                             Show this help text.'
   ].join('\n')
 }
 
-function renderCliOutput(output: CliOutput, outputMode: 'json' | 'plain'): string {
+function renderCliOutput(output: CliOutput, outputMode: 'json' | 'plain' | 'compare'): string {
   if (outputMode === 'json') {
     return `${JSON.stringify(output, null, 2)}\n`
+  }
+
+  if (outputMode === 'compare') {
+    const blocks = output.targets
+      .map((target) => renderCompareTarget(target))
+      .filter((block) => block.length > 0)
+
+    return blocks.length > 0 ? `${blocks.join('\n\n')}\n` : ''
   }
 
   const blocks = output.targets
@@ -440,6 +470,32 @@ function renderCliOutput(output: CliOutput, outputMode: 'json' | 'plain'): strin
     .filter((block) => block.length > 0)
 
   return blocks.length > 0 ? `${blocks.join('\n\n')}\n` : ''
+}
+
+function renderCompareTarget(target: CliTargetOutput): string {
+  if (!target.comparison) {
+    return ''
+  }
+
+  return [
+    formatCompareTargetHeader(target),
+    target.sourceText,
+    '',
+    'minimal',
+    target.comparison.minimalAssertionLines.join('\n'),
+    '',
+    'full',
+    target.comparison.fullAssertionLines.join('\n')
+  ].join('\n')
+}
+
+function formatCompareTargetHeader(target: CliTargetOutput): string {
+  if (target.kind === 'line') {
+    return `line ${target.documentLine}`
+  }
+
+  const ranges = target.ranges.map((range) => `${range.startIndex + 1}-${range.endIndex}`).join(', ')
+  return `range ${target.documentLine}${ranges.length > 0 ? ` (${ranges})` : ''}`
 }
 
 function createCliLogger(logLevel: CliArguments['logLevel']): {
@@ -457,6 +513,44 @@ function createCliLogger(logLevel: CliArguments['logLevel']): {
         process.stderr.write(`[info] ${message}\n`)
       }
     }
+  }
+}
+
+async function generateLineComparison(
+  context: AssertionGenerationContext,
+  sourceLineIndex: number,
+  args: Pick<CliArguments, 'compactRanges'>
+): Promise<CliScopeModeComparison> {
+  return {
+    minimalAssertionLines: await generateLineAssertionBlock(context, sourceLineIndex, {
+      compactRanges: args.compactRanges,
+      scopeMode: 'minimal'
+    }),
+    fullAssertionLines: await generateLineAssertionBlock(context, sourceLineIndex, {
+      compactRanges: args.compactRanges,
+      scopeMode: 'full'
+    })
+  }
+}
+
+async function generateRangeComparison(
+  context: AssertionGenerationContext,
+  sourceLineIndex: number,
+  rangeTarget: ReturnType<typeof collectSelectionRangeTargets>[number],
+  args: Pick<CliArguments, 'compactRanges'>
+): Promise<CliScopeModeComparison> {
+  const minimal = await generateRangeAssertionBlock(context, sourceLineIndex, rangeTarget, {
+    compactRanges: args.compactRanges,
+    scopeMode: 'minimal'
+  })
+  const full = await generateRangeAssertionBlock(context, sourceLineIndex, rangeTarget, {
+    compactRanges: args.compactRanges,
+    scopeMode: 'full'
+  })
+
+  return {
+    minimalAssertionLines: minimal.assertionLines,
+    fullAssertionLines: full.assertionLines
   }
 }
 

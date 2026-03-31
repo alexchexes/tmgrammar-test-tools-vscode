@@ -201,6 +201,7 @@ Output options:
 
 - `--json` prints structured JSON output. This is the default.
 - `--plain` prints only the generated assertion lines.
+- `--compare` prints the source line plus both `minimal` and `full` assertion blocks in plain text.
 - `--log-level <silent|info|debug>` prints CLI diagnostics to stderr.
 
 Notes:

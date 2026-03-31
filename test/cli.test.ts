@@ -123,6 +123,59 @@ test('CLI plain mode prints only generated assertion lines', async () => {
   )
 })
 
+test('CLI compare mode prints minimal and full assertion blocks with the source line', async () => {
+  const cliPath = path.resolve(__dirname, '../src/cli.js')
+  const fixtureConfigPath = path.resolve(__dirname, '../../fixtures/simple-grammar/package.json')
+  const fixtureTestPath = path.resolve(__dirname, '../../fixtures/simple-grammar/tests/example.simple-poc')
+
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    [cliPath, '--file', fixtureTestPath, '--config', fixtureConfigPath, '--line', '4', '--compare'],
+    {
+      cwd: path.resolve(__dirname, '../..')
+    }
+  )
+
+  assert.equal(
+    stdout,
+    [
+      'line 4',
+      'const answer = "ok"',
+      '',
+      'minimal',
+      '// <----- keyword.control.simple-poc',
+      '//             ^^^^ string.quoted.double.simple-poc',
+      '//             ^ punctuation.definition.string.begin.simple-poc',
+      '//                ^ punctuation.definition.string.end.simple-poc',
+      '',
+      'full',
+      '// <----- source.simple-poc keyword.control.simple-poc',
+      '//   ^^^^^^^^^^ source.simple-poc',
+      '//             ^ source.simple-poc string.quoted.double.simple-poc punctuation.definition.string.begin.simple-poc',
+      '//              ^^ source.simple-poc string.quoted.double.simple-poc',
+      '//                ^ source.simple-poc string.quoted.double.simple-poc punctuation.definition.string.end.simple-poc',
+      ''
+    ].join('\n')
+  )
+})
+
+test('CLI compare mode rejects --scope-mode because it always prints both forms', async () => {
+  const cliPath = path.resolve(__dirname, '../src/cli.js')
+  const fixtureConfigPath = path.resolve(__dirname, '../../fixtures/simple-grammar/package.json')
+  const fixtureTestPath = path.resolve(__dirname, '../../fixtures/simple-grammar/tests/example.simple-poc')
+
+  await assert.rejects(
+    execFileAsync(
+      process.execPath,
+      [cliPath, '--file', fixtureTestPath, '--config', fixtureConfigPath, '--line', '4', '--compare', '--scope-mode', 'minimal'],
+      {
+        cwd: path.resolve(__dirname, '../..')
+      }
+    ),
+    /--compare cannot be combined with --scope-mode/
+  )
+})
+
 test('CLI info log level writes diagnostics to stderr while keeping stdout JSON clean', async () => {
   const cliPath = path.resolve(__dirname, '../src/cli.js')
   const fixtureConfigPath = path.resolve(__dirname, '../../fixtures/simple-grammar/package.json')
