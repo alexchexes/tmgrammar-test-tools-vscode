@@ -110,15 +110,7 @@
       "testing/message/context": [
         {
           "command": "tmGrammarTestTools.copyTestFailureMessage",
-          "when": "testMessage == tmGrammarTestTools.failure",
-          "group": "inline"
-        }
-      ],
-      "testing/message/content": [
-        {
-          "command": "tmGrammarTestTools.copyTestFailureMessage",
-          "when": "testMessage == tmGrammarTestTools.failure",
-          "group": "inline"
+          "when": "testMessage == tmGrammarTestTools.failure"
         }
       ]
     },
