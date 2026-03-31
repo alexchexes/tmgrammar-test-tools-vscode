@@ -58,8 +58,8 @@ test('safe refresh does not drop generated positive lines when preserved mixed l
   const generatedAssertionLines = ['// <--- new.expr.js']
 
   assert.deepEqual(mergeSafeRefreshAssertionLines('//', existingAssertionLines, generatedAssertionLines), [
-    '// <--- source.js new.expr.js - scope1',
-    '// <--- new.expr.js'
+    '// <--- new.expr.js',
+    '// <--- source.js new.expr.js - scope1'
   ])
 })
 
@@ -74,6 +74,22 @@ test('safe refresh keeps preserved left-arrow assertions at the top of the block
     '// <--------------------------- new.expr.js - scope1',
     '// <--- keyword.operator.new.js',
     '//  ^^^^^^ meta.function-call.js entity.name.function.js'
+  ])
+})
+
+test('safe refresh inserts preserved left-arrow assertions among generated left-arrow assertions by marker order', () => {
+  const existingAssertionLines = ['// <~-- keyword.control.anchor.regexp.js - bar']
+  const generatedAssertionLines = [
+    '// <- string.regexp.js punctuation.definition.string.begin.js',
+    '// <~----- string.regexp.js meta.embedded.js.regexp string.regexp.js',
+    '// ^ keyword.operator.quantifier.regexp.js'
+  ]
+
+  assert.deepEqual(mergeSafeRefreshAssertionLines('//', existingAssertionLines, generatedAssertionLines), [
+    '// <- string.regexp.js punctuation.definition.string.begin.js',
+    '// <~----- string.regexp.js meta.embedded.js.regexp string.regexp.js',
+    '// <~-- keyword.control.anchor.regexp.js - bar',
+    '// ^ keyword.operator.quantifier.regexp.js'
   ])
 })
 

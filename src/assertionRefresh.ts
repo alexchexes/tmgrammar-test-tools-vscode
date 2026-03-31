@@ -70,6 +70,17 @@ export function mergeSafeRefreshAssertionLines(
     preservedCaretAssertionLines.push(preservedLine)
   }
 
+  for (const preservedLine of preservedLeftAssertionLines) {
+    const preservedParsed = parseAssertionLine(preservedLine, commentToken)
+    if (!preservedParsed) {
+      mergedAssertionLines.push(preservedLine)
+      continue
+    }
+
+    const insertionSlot = findLeftInsertionSlot(mergedAssertionLines, preservedParsed, commentToken)
+    mergedAssertionLines.splice(insertionSlot, 0, preservedLine)
+  }
+
   for (const preservedLine of preservedCaretAssertionLines) {
     const preservedParsed = parseAssertionLine(preservedLine, commentToken)
     if (!preservedParsed) {
@@ -81,7 +92,7 @@ export function mergeSafeRefreshAssertionLines(
     mergedAssertionLines.splice(insertionSlot, 0, preservedLine)
   }
 
-  return [...preservedLeftAssertionLines, ...mergedAssertionLines, ...preservedOtherAssertionLines]
+  return [...mergedAssertionLines, ...preservedOtherAssertionLines]
 }
 
 export function mergeAppendAssertionLines(
@@ -324,8 +335,9 @@ function deriveAppendInsertions(
 }
 
 function countLeadingTildes(markerBody: string): number {
+  const leftMarkerBody = markerBody.startsWith('<') ? markerBody.slice(1) : markerBody
   let count = 0
-  for (const character of markerBody) {
+  for (const character of leftMarkerBody) {
     if (character === '~') {
       count++
       continue
@@ -338,8 +350,9 @@ function countLeadingTildes(markerBody: string): number {
 }
 
 function countTrailingHyphens(markerBody: string): number {
+  const leftMarkerBody = markerBody.startsWith('<') ? markerBody.slice(1) : markerBody
   let count = 0
-  for (const character of markerBody) {
+  for (const character of leftMarkerBody) {
     if (character === '-') {
       count++
     }
