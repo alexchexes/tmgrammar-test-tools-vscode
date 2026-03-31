@@ -98,6 +98,11 @@
         "command": "tmGrammarTestTools.copyTestFailureMessage",
         "category": "TM Grammar Test Tools",
         "title": "Copy"
+      },
+      {
+        "command": "tmGrammarTestTools.goToTestFailureSourceRange",
+        "category": "TM Grammar Test Tools",
+        "title": "Go to Source Range"
       }
     ],
     "menus": {
@@ -105,11 +110,20 @@
         {
           "command": "tmGrammarTestTools.copyTestFailureMessage",
           "when": "false"
+        },
+        {
+          "command": "tmGrammarTestTools.goToTestFailureSourceRange",
+          "when": "false"
         }
       ],
       "testing/message/context": [
         {
           "command": "tmGrammarTestTools.copyTestFailureMessage",
+          "when": "testMessage == tmGrammarTestTools.failure",
+          "group": "navigation@2"
+        },
+        {
+          "command": "tmGrammarTestTools.goToTestFailureSourceRange",
           "when": "testMessage == tmGrammarTestTools.failure"
         }
       ]

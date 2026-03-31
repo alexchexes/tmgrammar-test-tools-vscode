@@ -5,6 +5,7 @@ import {
   buildLineOnlyGrammarTestCase,
   collectRunnableSourceLinesFromLines,
   GrammarTestCase,
+  resolveFailureAssertionDocumentLine,
   resolveFailureAssertionRange
 } from '../src/testingModel'
 
@@ -252,5 +253,28 @@ test('resolveFailureAssertionRange returns undefined when no matching assertion 
       unexpected: []
     }),
     undefined
+  )
+})
+
+test('resolveFailureAssertionDocumentLine resolves the matching assertion line below the source line', () => {
+  const lines = [
+    '// SYNTAX TEST "source.example"',
+    '',
+    'var TEST = "ok"',
+    '// <-- foo',
+    '// <~-- bar'
+  ]
+
+  assert.equal(
+    resolveFailureAssertionDocumentLine(lines, '//', 2, {
+      actual: [],
+      end: 3,
+      line: 2,
+      missing: ['bar'],
+      srcLine: 1,
+      start: 0,
+      unexpected: []
+    }),
+    4
   )
 })

@@ -17,8 +17,10 @@ import {
   GrammarTestCase,
   GrammarTestFailure,
   RunnableSourceLine,
+  resolveFailureAssertionDocumentLine,
   resolveFailureAssertionRange
 } from './testingModel'
+import { rememberTestFailureSourceLocation } from './testMessageActions'
 
 const { createRegistry } = require('vscode-tmgrammar-test/dist/common/index') as {
   createRegistry: (grammars: Array<{ injectTo?: string[]; language?: string; path: string; scopeName: string }>) => unknown
@@ -407,6 +409,8 @@ function renderTestFailure(
   runnableSourceLines: readonly RunnableSourceLine[],
   document: vscode.TextDocument
 ): RenderedTestFailure {
+  const lines = splitIntoLines(document.getText())
+  const header = parseHeaderLine(document.lineAt(0).text)
   const sourceLine = runnableSourceLines.find((line) => line.sourceLineNumber === failure.srcLine)
   const sourceDocumentLine = sourceLine?.documentLine ?? 0
   const documentLine = document.lineAt(sourceDocumentLine)
@@ -415,7 +419,15 @@ function renderTestFailure(
   const rawStartCharacter = assertionRange?.start ?? failure.start
   const endCharacter = Math.min(rawEndCharacter, documentLine.text.length)
   const startCharacter = Math.min(rawStartCharacter, endCharacter)
-  const range = new vscode.Range(sourceDocumentLine, startCharacter, sourceDocumentLine, endCharacter)
+  const sourceRange = new vscode.Range(sourceDocumentLine, startCharacter, sourceDocumentLine, endCharacter)
+  const assertionDocumentLine = resolveFailureAssertionDocumentLine(
+    lines,
+    header.commentToken,
+    sourceDocumentLine,
+    failure
+  )
+  const assertionLine = clampDocumentLine(assertionDocumentLine ?? sourceDocumentLine, document)
+  const assertionLocation = new vscode.Location(document.uri, document.lineAt(assertionLine).range)
   const humanSourceLine = sourceDocumentLine + 1
   const summaryParts: string[] = []
 
@@ -436,8 +448,9 @@ function renderTestFailure(
   }
 
   const message = new vscode.TestMessage(detailParts.join('\n'))
-  message.location = new vscode.Location(document.uri, range)
+  message.location = assertionLocation
   message.contextValue = 'tmGrammarTestTools.failure'
+  rememberTestFailureSourceLocation(message, assertionLocation, new vscode.Location(document.uri, sourceRange))
 
   return {
     failure,
@@ -552,6 +565,14 @@ function collectRunnableSourceDocumentLines(document: vscode.TextDocument): read
   } catch {
     return []
   }
+}
+
+function clampDocumentLine(line: number, document: vscode.TextDocument): number {
+  if (document.lineCount === 0) {
+    return 0
+  }
+
+  return Math.max(0, Math.min(line, document.lineCount - 1))
 }
 
 function sameLineSet(left: readonly number[], right: readonly number[]): boolean {

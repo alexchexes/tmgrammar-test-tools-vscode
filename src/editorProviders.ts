@@ -4,6 +4,7 @@ import { collectLineCodeLensSpecs } from './codeLens'
 import { onDidChangeCodeLenses } from './codeLensController'
 import { SelectionInput } from './selectionTargets'
 import { collectSourceLines, parseHeaderLine, SelectionLineTarget } from './syntaxTest'
+import { registerTestMessageCommands } from './testMessageActions'
 
 export function registerCodeActionsProvider(): vscode.Disposable {
   const providedCodeActionKinds = [vscode.CodeActionKind.QuickFix.append('tmGrammarTestTools')]
@@ -96,16 +97,7 @@ export function registerCodeLensProvider(): vscode.Disposable {
   )
 }
 
-export function registerCopyTestFailureMessageCommand(): vscode.Disposable {
-  return vscode.commands.registerCommand('tmGrammarTestTools.copyTestFailureMessage', async (value) => {
-    const message = getTestMessageText(value)
-    if (!message) {
-      return
-    }
-
-    await vscode.env.clipboard.writeText(message)
-  })
-}
+export const registerTestFailureMessageCommands = registerTestMessageCommands
 
 function toSelectionLineTargetFromRange(range: vscode.Range | vscode.Selection): SelectionLineTarget {
   const selection = range instanceof vscode.Selection ? range : undefined
@@ -131,31 +123,4 @@ function toSelectionInputFromRange(range: vscode.Range | vscode.Selection): Sele
     startCharacter: range.start.character,
     startLine: range.start.line
   }
-}
-
-function getTestMessageText(value: unknown): string | undefined {
-  if (
-    typeof value === 'object' &&
-    value !== null &&
-    'message' in value &&
-    typeof value.message === 'object' &&
-    value.message !== null &&
-    'message' in value.message
-  ) {
-    const rawMessage = value.message.message
-    if (typeof rawMessage === 'string') {
-      return rawMessage
-    }
-
-    if (
-      typeof rawMessage === 'object' &&
-      rawMessage !== null &&
-      'value' in rawMessage &&
-      typeof rawMessage.value === 'string'
-    ) {
-      return rawMessage.value
-    }
-  }
-
-  return undefined
 }

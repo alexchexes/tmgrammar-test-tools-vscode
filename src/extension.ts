@@ -6,7 +6,7 @@ import {
 import {
   registerCodeActionsProvider,
   registerCodeLensProvider,
-  registerCopyTestFailureMessageCommand
+  registerTestFailureMessageCommands
 } from './editorProviders'
 import { registerLogger } from './log'
 import { registerTestingController } from './testing'
@@ -29,7 +29,7 @@ export function activate(context: vscode.ExtensionContext): void {
   )
   context.subscriptions.push(registerCodeActionsProvider())
   context.subscriptions.push(registerCodeLensProvider())
-  context.subscriptions.push(registerCopyTestFailureMessageCommand())
+  context.subscriptions.push(registerTestFailureMessageCommands())
   context.subscriptions.push(registerTestingController(context))
 }
 

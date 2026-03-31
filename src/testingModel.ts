@@ -40,6 +40,7 @@ export interface GrammarTestFailure {
 }
 
 const ASSERTION_REGEX = /^\s*(\^|<[~]*-)/
+const ASSERTION_LINE_REGEX = /^(\s*)(\^+|<[~]*-+)\s+(.+)$/
 
 export function collectRunnableSourceLinesFromLines(
   lines: readonly string[],
@@ -116,6 +117,64 @@ export function resolveFailureAssertionRange(
   }
 }
 
+export function resolveFailureAssertionDocumentLine(
+  lines: readonly string[],
+  commentToken: string,
+  sourceDocumentLine: number,
+  failure: GrammarTestFailure
+): number | undefined {
+  const candidates: Array<{
+    end: number
+    exactRangeMatch: boolean
+    line: number
+    scopeScore: number
+    start: number
+    width: number
+  }> = []
+
+  for (let line = sourceDocumentLine + 1; line < lines.length; line++) {
+    const parsedAssertion = parseAssertionLine(lines[line], commentToken)
+    if (!parsedAssertion) {
+      break
+    }
+
+    if (!rangesOverlap(parsedAssertion.start, parsedAssertion.end, failure.start, failure.end)) {
+      continue
+    }
+
+    candidates.push({
+      end: parsedAssertion.end,
+      exactRangeMatch: parsedAssertion.start === failure.start && parsedAssertion.end === failure.end,
+      line,
+      scopeScore: scoreAssertionLineMatch(parsedAssertion, failure),
+      start: parsedAssertion.start,
+      width: parsedAssertion.end - parsedAssertion.start
+    })
+  }
+
+  if (candidates.length === 0) {
+    return undefined
+  }
+
+  candidates.sort((left, right) => {
+    if (left.scopeScore !== right.scopeScore) {
+      return right.scopeScore - left.scopeScore
+    }
+
+    if (left.exactRangeMatch !== right.exactRangeMatch) {
+      return left.exactRangeMatch ? -1 : 1
+    }
+
+    if (left.width !== right.width) {
+      return left.width - right.width
+    }
+
+    return left.start - right.start
+  })
+
+  return candidates[0].line
+}
+
 function findBestScopeCandidates(
   candidates: readonly GrammarTestScopeAssertion[],
   failure: GrammarTestFailure
@@ -171,4 +230,80 @@ function isAssertionLine(line: string, commentToken: string): boolean {
 
 function rangesOverlap(startA: number, endA: number, startB: number, endB: number): boolean {
   return startA < endB && endA > startB
+}
+
+function parseAssertionLine(
+  line: string,
+  commentToken: string
+): { end: number; exclude: string[]; scopes: string[]; start: number } | undefined {
+  if (!line.startsWith(commentToken)) {
+    return undefined
+  }
+
+  const body = line.slice(commentToken.length)
+  const match = body.match(ASSERTION_LINE_REGEX)
+  if (!match) {
+    return undefined
+  }
+
+  const scopeTokens = match[3].trim().split(/\s+/)
+  const firstNegativeIndex = scopeTokens.indexOf('-')
+  const markerBody = match[2]
+  const start = markerBody.startsWith('^')
+    ? commentToken.length + match[1].length
+    : countLeadingTildes(markerBody)
+  const width = markerBody.startsWith('^') ? markerBody.length : countTrailingHyphens(markerBody)
+
+  return {
+    end: start + width,
+    exclude: firstNegativeIndex === -1 ? [] : scopeTokens.slice(firstNegativeIndex + 1),
+    scopes: firstNegativeIndex === -1 ? scopeTokens : scopeTokens.slice(0, firstNegativeIndex),
+    start
+  }
+}
+
+function scoreAssertionLineMatch(
+  assertion: { exclude: readonly string[]; scopes: readonly string[] },
+  failure: GrammarTestFailure
+): number {
+  let score = 0
+
+  if (failure.missing.length > 0) {
+    score += countMatches(assertion.scopes, failure.missing) * 10
+  }
+
+  if (failure.unexpected.length > 0) {
+    score += countMatches(assertion.exclude, failure.unexpected) * 10
+  }
+
+  return score
+}
+
+function countLeadingTildes(markerBody: string): number {
+  const leftMarkerBody = markerBody.startsWith('<') ? markerBody.slice(1) : markerBody
+  let count = 0
+
+  for (const character of leftMarkerBody) {
+    if (character === '~') {
+      count++
+      continue
+    }
+
+    break
+  }
+
+  return count
+}
+
+function countTrailingHyphens(markerBody: string): number {
+  const leftMarkerBody = markerBody.startsWith('<') ? markerBody.slice(1) : markerBody
+  let count = 0
+
+  for (const character of leftMarkerBody) {
+    if (character === '-') {
+      count++
+    }
+  }
+
+  return count
 }
