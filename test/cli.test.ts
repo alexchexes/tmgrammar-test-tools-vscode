@@ -1,5 +1,7 @@
 import * as assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import * as os from 'node:os'
 import * as path from 'node:path'
 import { test } from 'node:test'
 import { promisify } from 'node:util'
@@ -245,4 +247,89 @@ test('CLI debug log level writes effective grammar usage trace to stderr', async
 
   assert.match(stderr, /\[debug\] Effective grammar usage for source line 4:/)
   assert.match(stderr, /\[debug\]\s+base scope:/)
+})
+
+test('CLI provider-scope skips the provider for non-matching syntax test scopes', async () => {
+  const cliPath = path.resolve(__dirname, '../src/cli.js')
+  const fixtureConfigPath = path.resolve(__dirname, '../../fixtures/simple-grammar/package.json')
+  const fixtureTestPath = path.resolve(__dirname, '../../fixtures/simple-grammar/tests/example.simple-poc')
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'tmgrammar-cli-provider-scope-'))
+
+  try {
+    const scriptPath = path.join(tempDir, 'provider-fail.cjs')
+    await writeFile(scriptPath, "process.stderr.write('provider should have been skipped\\n'); process.exit(1)\n")
+
+    const { stdout, stderr } = await execFileAsync(
+      process.execPath,
+      [
+        cliPath,
+        '--file',
+        fixtureTestPath,
+        '--config',
+        fixtureConfigPath,
+        '--line',
+        '4',
+        '--provider-command',
+        `"${process.execPath}" "${scriptPath}"`,
+        '--provider-scope',
+        'source.other',
+        '--log-level',
+        'info'
+      ],
+      {
+        cwd: path.resolve(__dirname, '../..')
+      }
+    )
+
+    const output = JSON.parse(stdout) as {
+      scopeName: string
+      targets: Array<{ assertionLines: string[]; documentLine: number; kind: string; sourceText: string }>
+    }
+
+    assert.equal(output.scopeName, 'source.simple-poc')
+    assert.deepEqual(
+      output.targets.map((target) => ({ documentLine: target.documentLine, kind: target.kind })),
+      [{ documentLine: 4, kind: 'line' }]
+    )
+    assert.match(stderr, /Skipping grammar provider for scope source\.simple-poc because --provider-scope is limited to: source\.other/)
+  } finally {
+    await rm(tempDir, { force: true, recursive: true })
+  }
+})
+
+test('CLI provider-scope runs the provider for exact matching syntax test scopes', async () => {
+  const cliPath = path.resolve(__dirname, '../src/cli.js')
+  const fixtureConfigPath = path.resolve(__dirname, '../../fixtures/simple-grammar/package.json')
+  const fixtureTestPath = path.resolve(__dirname, '../../fixtures/simple-grammar/tests/example.simple-poc')
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'tmgrammar-cli-provider-scope-'))
+
+  try {
+    const scriptPath = path.join(tempDir, 'provider-fail.cjs')
+    await writeFile(scriptPath, "process.stderr.write('provider ran\\n'); process.exit(1)\n")
+
+    await assert.rejects(
+      execFileAsync(
+        process.execPath,
+        [
+          cliPath,
+          '--file',
+          fixtureTestPath,
+          '--config',
+          fixtureConfigPath,
+          '--line',
+          '4',
+          '--provider-command',
+          `"${process.execPath}" "${scriptPath}"`,
+          '--provider-scope',
+          'source.simple-poc'
+        ],
+        {
+          cwd: path.resolve(__dirname, '../..')
+        }
+      ),
+      /provider ran/
+    )
+  } finally {
+    await rm(tempDir, { force: true, recursive: true })
+  }
 })

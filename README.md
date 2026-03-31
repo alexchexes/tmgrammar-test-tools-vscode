@@ -188,7 +188,7 @@ Grammar loading:
 - `--config <package.json>` loads grammars from a grammar package manifest. If you omit it, the CLI searches upward from `--file` for a `package.json` with `contributes.grammars`.
 - `--provider-command <command>` runs a grammar provider command.
 - `--provider-cwd <cwd>` sets the provider working directory. If omitted, the CLI runs the provider from `${projectRoot}` for `--file`.
-
+- `--provider-scope <scope>` is repeatable and limits the provider to exact syntax-test header scope matches, similar to `tmGrammarTestTools.grammarProvider.scopes`.
 - `--provider-timeout-ms <ms>` sets the provider timeout.
 
 Render options:

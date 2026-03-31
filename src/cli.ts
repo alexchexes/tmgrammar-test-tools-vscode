@@ -9,6 +9,7 @@ import {
 import { findGrammarConfigPathForFile, loadGrammarContributionsFromConfig } from './grammarPackage'
 import { buildDetailedGrammarSourceEntries, buildGrammarSourceSet } from './grammarSources'
 import { getEssentialGrammarSummaryLines, resolveSourcedGrammarEntries } from './grammarDebug'
+import { normalizeConfiguredProviderScopes, shouldRunProviderForScope } from './providerScopeFilter'
 import { resolveProjectRootForFile } from './projectRoots'
 import { ScopeMode } from './render'
 import { SelectionInput, collectSelectionRangeTargets } from './selectionTargets'
@@ -26,6 +27,7 @@ interface CliArguments {
   outputMode: 'json' | 'plain' | 'compare'
   providerCommand?: string
   providerCwd?: string
+  providerScopes: string[]
   providerTimeoutMs?: number
   rangeTargets: RangeSpec[]
   scopeMode: ScopeMode
@@ -111,27 +113,31 @@ export async function runCli(argv: readonly string[]): Promise<CliOutput> {
     logger.info(`Loaded local grammar config in ${formatDuration(localConfigStopwatch())}.`)
   }
   const providerStopwatch = startStopwatch()
-  if (args.providerCommand?.trim()) {
-    logger.info(`Running grammar provider command: ${args.providerCommand}`)
+  const providerCommand = args.providerCommand?.trim()
+  const normalizedProviderScopes = normalizeConfiguredProviderScopes(args.providerScopes)
+  const shouldRunProvider = !!providerCommand && shouldRunProviderForScope(header.scopeName, normalizedProviderScopes)
+
+  if (providerCommand && shouldRunProvider) {
+    logger.info(`Running grammar provider command: ${providerCommand}`)
     if (args.providerCwd?.trim()) {
       logger.info(`Grammar provider cwd: ${args.providerCwd}`)
     }
   }
   const providerGrammars =
-    args.providerCommand?.trim()
+    shouldRunProvider
       ? await runGrammarProvider(
           {
             filePath,
             projectRoot
           },
           {
-            command: args.providerCommand,
+            command: providerCommand,
             cwd: args.providerCwd,
             timeoutMs: args.providerTimeoutMs
           }
         )
       : []
-  if (args.providerCommand?.trim()) {
+  if (providerCommand && shouldRunProvider) {
     logger.info(
       `Grammar provider returned ${providerGrammars.length} grammar path(s): ${providerGrammars
         .slice(0, 5)
@@ -139,6 +145,10 @@ export async function runCli(argv: readonly string[]): Promise<CliOutput> {
         .join(', ')}${providerGrammars.length > 5 ? ', ...' : ''}`
     )
     logger.info(`Grammar provider completed in ${formatDuration(providerStopwatch())}.`)
+  } else if (providerCommand && normalizedProviderScopes) {
+    logger.info(
+      `Skipping grammar provider for scope ${header.scopeName} because --provider-scope is limited to: ${normalizedProviderScopes.join(', ')}`
+    )
   } else {
     logger.info('No grammar provider command configured for the CLI run.')
   }
@@ -281,6 +291,7 @@ function parseArguments(argv: readonly string[]): CliArguments {
     lineTargets: [],
     logLevel: 'silent',
     outputMode: 'json',
+    providerScopes: [],
     rangeTargets: [],
     scopeMode: 'full',
     scopeModeProvided: false
@@ -305,6 +316,9 @@ function parseArguments(argv: readonly string[]): CliArguments {
         break
       case '--provider-cwd':
         args.providerCwd = readValue(argv, ++index, '--provider-cwd')
+        break
+      case '--provider-scope':
+        args.providerScopes.push(readValue(argv, ++index, '--provider-scope'))
         break
       case '--provider-timeout-ms':
         args.providerTimeoutMs = parsePositiveNumber(readValue(argv, ++index, '--provider-timeout-ms'), argument)
@@ -440,6 +454,7 @@ function buildHelpText(): string {
     '  --config <package.json>            Optional grammar package.json path.',
     '  --provider-command <command>       Optional grammar provider command.',
     '  --provider-cwd <cwd>               Optional grammar provider working directory.',
+    '  --provider-scope <scope>           Repeatable exact syntax-test scope filter for --provider-command.',
     '  --provider-timeout-ms <ms>         Provider command timeout in milliseconds.',
     '  --scope-mode <full|minimal>        Assertion rendering mode. Defaults to full.',
     '  --log-level <silent|info|debug>    Print diagnostics to stderr. Defaults to silent.',
