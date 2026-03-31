@@ -13,7 +13,7 @@ Generate, refresh, and run TextMate syntax test assertions directly in VS Code. 
 <details>
 <summary>GIF</summary>
 
-*GIF fallback for GitHub, which doesn't render `<video>`. [Link to mp4](https://raw.githubusercontent.com/alexchexes/vscode-tmgrammar-test-tools/master/media/readme/insert-assertions.mp4)*.
+_GIF fallback for GitHub, which doesn't render `<video>`. [Link to mp4](https://raw.githubusercontent.com/alexchexes/vscode-tmgrammar-test-tools/master/media/readme/insert-assertions.mp4)_.
 
 ![Generate Assertions demo](https://raw.githubusercontent.com/alexchexes/vscode-tmgrammar-test-tools/master/media/readme/insert-assertions.gif)
 
@@ -28,12 +28,11 @@ Generate, refresh, and run TextMate syntax test assertions directly in VS Code. 
 <details>
 <summary>GIF</summary>
 
-*GIF fallback for GitHub, which doesn't render `<video>`. [Link to mp4](https://raw.githubusercontent.com/alexchexes/vscode-tmgrammar-test-tools/master/media/readme/testing.mp4)*.
+_GIF fallback for GitHub, which doesn't render `<video>`. [Link to mp4](https://raw.githubusercontent.com/alexchexes/vscode-tmgrammar-test-tools/master/media/readme/testing.mp4)_.
 
 ![Testing demo](https://raw.githubusercontent.com/alexchexes/vscode-tmgrammar-test-tools/master/media/readme/testing.gif)
 
 </details>
-
 
 ## Quick Start
 
@@ -43,17 +42,15 @@ Generate, refresh, and run TextMate syntax test assertions directly in VS Code. 
    <comment token> SYNTAX TEST "<language scope>" "optional description"
    ```
 
-2. Run one of:
-   - `TM Grammar Test Tools: Insert Line Assertions`
-   - `TM Grammar Test Tools: Insert Line Assertions (Full)`
-   - `TM Grammar Test Tools: Insert Line Assertions (Minimal)`
-   - `TM Grammar Test Tools: Replace Line Assertions`
-   - `TM Grammar Test Tools: Replace Line Assertions (Full)`
-   - `TM Grammar Test Tools: Replace Line Assertions (Minimal)`
-   - `TM Grammar Test Tools: Insert Range Assertions`
-   - `TM Grammar Test Tools: Insert Range Assertions (Full)`
-   - `TM Grammar Test Tools: Insert Range Assertions (Minimal)`
-3. The extension resolves grammars from local config, optional provider output, and optionally installed VS Code grammar contributions, then tokenizes from the top of the syntax test through the targeted source line(s) and inserts or refreshes the matching assertion block.
+2. Run one of the assertion commands:
+   - `Insert Line Assertions` to generate or safely refresh assertions for whole source lines
+   - `Replace Line Assertions` to fully replace an existing line assertion block
+   - `Insert Range Assertions` to generate assertions only for the selected range or token at the cursor
+   - use the `Full` and `Minimal` variants when you want to override the default scope mode for one invocation:
+     - `Full`: emits full scope stacks starting from the syntax-test header scope
+     - `Minimal`: applies a heuristic reduction and factoring pass to keep the output shorter while preserving useful scope distinctions
+     - unqualified `Insert ...` / `Replace ...` commands: use the current `tmGrammarTestTools.scopeMode` setting
+3. The extension resolves grammars from installed VS Code grammar contributions (if enabled), local config/package grammars, and optional [provider](#grammar-provider) output, with later sources taking precedence for exact scope-name matches, then tokenizes from the top of the syntax test through the targeted source line(s) and inserts or refreshes the matching assertion block.
 
 ## Command Behavior
 
@@ -114,6 +111,21 @@ Provider command output can be either:
 - newline-separated grammar file paths
 - a JSON array of paths or grammar objects
 - a JSON object with a `grammars` array
+
+Recommended output shape:
+
+```json
+[
+  "syntaxes/source.base.tmLanguage.json",
+  {
+    "path": "syntaxes/source.injection.tmLanguage.json",
+    "scopeName": "source.injection",
+    "injectTo": ["source.base"]
+  }
+]
+```
+
+See a [small example provider](examples/grammar-provider/print-grammars.cjs) that prints a JSON array of relative grammar paths.
 
 Provider grammars are merged after installed grammars when auto-loading is enabled and after local package.json grammars, so exact scope-name matches override earlier sources, while injection grammars remain additive.
 
