@@ -278,3 +278,42 @@ test('resolveFailureAssertionDocumentLine resolves the matching assertion line b
     4
   )
 })
+
+test('resolveFailureAssertionDocumentLine keeps disjoint caret failures on their original assertion line', () => {
+  const lines = [
+    '// SYNTAX TEST "source.example"',
+    '',
+    '/(foo)+\\1/',
+    '//    ^^^ string.regexp.js meta.embedded.js.regexp string.regexp.js',
+    '//    ^ keyword.operator.quantifier.regexp.js',
+    '// ^   ^^ keyword.qwe',
+    '//      ^ constant.numeric.regexp.js',
+    '//       ^ string.regexp.js punctuation.definition.string.end.js'
+  ]
+
+  assert.equal(
+    resolveFailureAssertionDocumentLine(lines, '//', 2, {
+      actual: ['source.js', 'string.regexp.js', 'meta.group.regexp'],
+      end: 5,
+      line: 2,
+      missing: ['keyword.qwe'],
+      srcLine: 1,
+      start: 2,
+      unexpected: []
+    }),
+    5
+  )
+
+  assert.equal(
+    resolveFailureAssertionDocumentLine(lines, '//', 2, {
+      actual: ['source.js', 'string.regexp.js', 'keyword.other.back-reference.regexp'],
+      end: 9,
+      line: 2,
+      missing: ['keyword.qwe'],
+      srcLine: 1,
+      start: 7,
+      unexpected: []
+    }),
+    5
+  )
+})

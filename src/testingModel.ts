@@ -40,7 +40,8 @@ export interface GrammarTestFailure {
 }
 
 const ASSERTION_REGEX = /^\s*(\^|<[~]*-)/
-const ASSERTION_LINE_REGEX = /^(\s*)(\^+|<[~]*-+)\s+(.+)$/
+const CARET_ASSERTION_LINE_REGEX = /^([\t ^]+)\s+(.+)$/
+const LEFT_ASSERTION_LINE_REGEX = /^(\s*<[~]*-+)\s+(.+)$/
 
 export function collectRunnableSourceLinesFromLines(
   lines: readonly string[],
@@ -138,17 +139,23 @@ export function resolveFailureAssertionDocumentLine(
       break
     }
 
-    if (!rangesOverlap(parsedAssertion.start, parsedAssertion.end, failure.start, failure.end)) {
+    const matchingRanges = parsedAssertion.ranges.filter((range) =>
+      rangesOverlap(range.start, range.end, failure.start, failure.end)
+    )
+    if (matchingRanges.length === 0) {
       continue
     }
 
+    matchingRanges.sort(compareLineRanges)
+    const bestMatchingRange = matchingRanges[0]
+
     candidates.push({
-      end: parsedAssertion.end,
-      exactRangeMatch: parsedAssertion.start === failure.start && parsedAssertion.end === failure.end,
+      end: bestMatchingRange.end,
+      exactRangeMatch: matchingRanges.some((range) => range.start === failure.start && range.end === failure.end),
       line,
       scopeScore: scoreAssertionLineMatch(parsedAssertion, failure),
-      start: parsedAssertion.start,
-      width: parsedAssertion.end - parsedAssertion.start
+      start: bestMatchingRange.start,
+      width: bestMatchingRange.end - bestMatchingRange.start
     })
   }
 
@@ -235,30 +242,50 @@ function rangesOverlap(startA: number, endA: number, startB: number, endB: numbe
 function parseAssertionLine(
   line: string,
   commentToken: string
-): { end: number; exclude: string[]; scopes: string[]; start: number } | undefined {
+): { exclude: string[]; ranges: ReadonlyArray<{ end: number; start: number }>; scopes: string[] } | undefined {
   if (!line.startsWith(commentToken)) {
     return undefined
   }
 
   const body = line.slice(commentToken.length)
-  const match = body.match(ASSERTION_LINE_REGEX)
-  if (!match) {
+  const leftMatch = body.match(LEFT_ASSERTION_LINE_REGEX)
+  if (leftMatch) {
+    const scopeTokens = leftMatch[2].trim().split(/\s+/)
+    const firstNegativeIndex = scopeTokens.indexOf('-')
+    const markerBody = leftMatch[1].trimStart()
+    const start = countLeadingTildes(markerBody)
+    const width = countTrailingHyphens(markerBody)
+
+    return {
+      exclude: firstNegativeIndex === -1 ? [] : scopeTokens.slice(firstNegativeIndex + 1),
+      ranges: [{ end: start + width, start }],
+      scopes: firstNegativeIndex === -1 ? scopeTokens : scopeTokens.slice(0, firstNegativeIndex)
+    }
+  }
+
+  const caretMatch = body.match(CARET_ASSERTION_LINE_REGEX)
+  if (!caretMatch || !caretMatch[1].includes('^')) {
     return undefined
   }
 
-  const scopeTokens = match[3].trim().split(/\s+/)
+  const scopeTokens = caretMatch[2].trim().split(/\s+/)
   const firstNegativeIndex = scopeTokens.indexOf('-')
-  const markerBody = match[2]
-  const start = markerBody.startsWith('^')
-    ? commentToken.length + match[1].length
-    : countLeadingTildes(markerBody)
-  const width = markerBody.startsWith('^') ? markerBody.length : countTrailingHyphens(markerBody)
+  const ranges = Array.from(caretMatch[1].matchAll(/\^+/g)).map((match) => {
+    const start = commentToken.length + (match.index ?? 0)
+    return {
+      end: start + match[0].length,
+      start
+    }
+  })
+
+  if (ranges.length === 0) {
+    return undefined
+  }
 
   return {
-    end: start + width,
     exclude: firstNegativeIndex === -1 ? [] : scopeTokens.slice(firstNegativeIndex + 1),
-    scopes: firstNegativeIndex === -1 ? scopeTokens : scopeTokens.slice(0, firstNegativeIndex),
-    start
+    ranges,
+    scopes: firstNegativeIndex === -1 ? scopeTokens : scopeTokens.slice(0, firstNegativeIndex)
   }
 }
 
@@ -277,6 +304,18 @@ function scoreAssertionLineMatch(
   }
 
   return score
+}
+
+function compareLineRanges(
+  left: { end: number; start: number },
+  right: { end: number; start: number }
+): number {
+  const widthDelta = left.end - left.start - (right.end - right.start)
+  if (widthDelta !== 0) {
+    return widthDelta
+  }
+
+  return left.start - right.start
 }
 
 function countLeadingTildes(markerBody: string): number {
