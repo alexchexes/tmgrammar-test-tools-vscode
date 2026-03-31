@@ -75,10 +75,16 @@ export function findTargetSourceLinesForSelections(
   selections: readonly SelectionLineTarget[]
 ): SourceLine[] {
   const targetSourceLines = new Map<number, SourceLine>()
+  const sourceLinesByDocumentLine = new Map(sourceLines.map((sourceLine) => [sourceLine.documentLine, sourceLine]))
 
   for (const selection of selections) {
     for (const lineNumber of getTouchedDocumentLines(selection)) {
-      const sourceLine = findTargetSourceLine(sourceLines, lineNumber)
+      const exactSourceLine = sourceLinesByDocumentLine.get(lineNumber)
+      const sourceLine = exactSourceLine ?? findTargetSourceLine(sourceLines, lineNumber)
+      if (sourceLine && !selection.isEmpty && sourceLine.text.trim().length === 0) {
+        continue
+      }
+
       if (sourceLine) {
         targetSourceLines.set(sourceLine.documentLine, sourceLine)
       }

@@ -8,6 +8,12 @@ const sourceLines: SourceLine[] = [
   { documentLine: 5, text: 'gamma' }
 ]
 
+const sourceLinesWithBlank: SourceLine[] = [
+  { documentLine: 1, text: 'alpha' },
+  { documentLine: 2, text: '' },
+  { documentLine: 4, text: 'beta' }
+]
+
 test('line targeting unions cursor positions and assertion-line ownership top-to-bottom', () => {
   const targets = findTargetSourceLinesForSelections(sourceLines, [
     {
@@ -70,5 +76,39 @@ test('line targeting includes the final line when a non-empty selection reaches 
   assert.deepEqual(
     targets.map((target) => target.documentLine),
     [1, 3, 5]
+  )
+})
+
+test('line targeting skips blank source lines for non-empty selections', () => {
+  const targets = findTargetSourceLinesForSelections(sourceLinesWithBlank, [
+    {
+      activeLine: 1,
+      endCharacter: 1,
+      endLine: 4,
+      isEmpty: false,
+      startLine: 1
+    }
+  ])
+
+  assert.deepEqual(
+    targets.map((target) => target.documentLine),
+    [1, 4]
+  )
+})
+
+test('line targeting still allows empty selections on blank source lines', () => {
+  const targets = findTargetSourceLinesForSelections(sourceLinesWithBlank, [
+    {
+      activeLine: 2,
+      endCharacter: 0,
+      endLine: 2,
+      isEmpty: true,
+      startLine: 2
+    }
+  ])
+
+  assert.deepEqual(
+    targets.map((target) => target.documentLine),
+    [2]
   )
 })
