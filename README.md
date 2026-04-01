@@ -183,7 +183,7 @@ The loading rules are then:
 
 - When `tmGrammarTestTools.autoLoadInstalledGrammars` is `false`, installed VS Code grammars are skipped and only local `package.json` plus provider grammars are used.
 - For the same exact scope name, precedence follows that fixed load order: installed VS Code grammars first (when enabled) → then local `package.json` grammars → then provider grammars.
-- Injection grammars are additive. A local or provider injection grammar can inject into a base grammar that comes from an installed or built-in VS Code extension, such as a repo contributing `source.js.regexp` while VS Code supplies `source.js`.
+- Injection grammars are additive. A local or provider injection grammar can extend a base grammar that comes from an installed or built-in VS Code extension, either by adding more specific scopes within existing content or by contributing injected regions.
 - If `tmGrammarTestTools.grammarProvider.command` is set, the extension runs it on each invocation and uses the returned grammar files for the current dump.
 
 ## Grammar Provider
