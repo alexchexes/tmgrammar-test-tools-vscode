@@ -1,19 +1,19 @@
 {
-  "name": "vscode-tmgrammar-test-tools",
+  "name": "tmgrammar-test-tools-vscode",
   "displayName": "TM Grammar Test Tools",
   "description": "Generate, refresh, and run TextMate syntax test assertions from VS Code.",
   "version": "0.1.0",
   "publisher": "AlexChexes",
   "license": "MIT",
-  "preview": false,
+  "preview": true,
   "icon": "media/icon.png",
-  "homepage": "https://github.com/alexchexes/vscode-tmgrammar-test-tools",
+  "homepage": "https://github.com/alexchexes/tmgrammar-test-tools-vscode",
   "bugs": {
-    "url": "https://github.com/alexchexes/vscode-tmgrammar-test-tools/issues"
+    "url": "https://github.com/alexchexes/tmgrammar-test-tools-vscode/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/alexchexes/vscode-tmgrammar-test-tools"
+    "url": "https://github.com/alexchexes/tmgrammar-test-tools-vscode"
   },
   "engines": {
     "vscode": "^1.85.0"

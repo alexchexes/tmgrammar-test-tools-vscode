@@ -4,31 +4,31 @@ Generate, refresh, and run assertions for [VSCode TextMate grammar tests](https:
 
 ### Generate Assertions
 
-<video controls muted playsinline poster="https://raw.githubusercontent.com/alexchexes/vscode-tmgrammar-test-tools/master/media/readme/insert-assertions.png">
-  <source src="https://raw.githubusercontent.com/alexchexes/vscode-tmgrammar-test-tools/master/media/readme/insert-assertions.mp4" type="video/mp4" />
+<video controls muted playsinline poster="https://raw.githubusercontent.com/alexchexes/tmgrammar-test-tools-vscode/master/media/readme/insert-assertions.png">
+  <source src="https://raw.githubusercontent.com/alexchexes/tmgrammar-test-tools-vscode/master/media/readme/insert-assertions.mp4" type="video/mp4" />
 </video>
 
 <details>
 <summary>GIF</summary>
 
-_GIF fallback for GitHub, which doesn't render `<video>`. [Link to mp4](https://raw.githubusercontent.com/alexchexes/vscode-tmgrammar-test-tools/master/media/readme/insert-assertions.mp4)_.
+_GIF fallback for GitHub, which doesn't render `<video>`. [Link to mp4](https://raw.githubusercontent.com/alexchexes/tmgrammar-test-tools-vscode/master/media/readme/insert-assertions.mp4)_.
 
-![Generate Assertions demo](https://raw.githubusercontent.com/alexchexes/vscode-tmgrammar-test-tools/master/media/readme/insert-assertions.gif)
+![Generate Assertions demo](https://raw.githubusercontent.com/alexchexes/tmgrammar-test-tools-vscode/master/media/readme/insert-assertions.gif)
 
 </details>
 
 ### Run Tests
 
-<video controls muted playsinline poster="https://raw.githubusercontent.com/alexchexes/vscode-tmgrammar-test-tools/master/media/readme/testing.png">
-  <source src="https://raw.githubusercontent.com/alexchexes/vscode-tmgrammar-test-tools/master/media/readme/testing.mp4" type="video/mp4" />
+<video controls muted playsinline poster="https://raw.githubusercontent.com/alexchexes/tmgrammar-test-tools-vscode/master/media/readme/testing.png">
+  <source src="https://raw.githubusercontent.com/alexchexes/tmgrammar-test-tools-vscode/master/media/readme/testing.mp4" type="video/mp4" />
 </video>
 
 <details>
 <summary>GIF</summary>
 
-_GIF fallback for GitHub, which doesn't render `<video>`. [Link to mp4](https://raw.githubusercontent.com/alexchexes/vscode-tmgrammar-test-tools/master/media/readme/testing.mp4)_.
+_GIF fallback for GitHub, which doesn't render `<video>`. [Link to mp4](https://raw.githubusercontent.com/alexchexes/tmgrammar-test-tools-vscode/master/media/readme/testing.mp4)_.
 
-![Testing demo](https://raw.githubusercontent.com/alexchexes/vscode-tmgrammar-test-tools/master/media/readme/testing.gif)
+![Testing demo](https://raw.githubusercontent.com/alexchexes/tmgrammar-test-tools-vscode/master/media/readme/testing.gif)
 
 </details>
 
