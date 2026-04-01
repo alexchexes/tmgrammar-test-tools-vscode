@@ -249,6 +249,8 @@ If `tmGrammarTestTools.grammarProvider.cwd` is empty or unset, the extension run
 
 ## CLI
 
+*The CLI is currently available from a local checkout of this repository; it is not distributed separately yet. Clone the repository to use it.*
+
 For scripted use outside VS Code.
 
 The CLI is read-only: it prints generated assertions to stdout and never modifies the file.
