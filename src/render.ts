@@ -246,9 +246,44 @@ function renderAssertionSpecs(
   specs: readonly AssertionSpec[],
   compactRanges: boolean
 ): string[] {
-  return [...specs]
-    .sort((left, right) => left.order - right.order)
+  const sortedSpecs = (compactRanges ? [...specs] : splitAssertionSpecsForUncompactedOutput(specs))
+    .sort(compareAssertionSpecs)
+
+  return sortedSpecs
     .flatMap((spec) => renderAssertionSpec(commentToken, sourceLine, spec, compactRanges))
+}
+
+function splitAssertionSpecsForUncompactedOutput(specs: readonly AssertionSpec[]): AssertionSpec[] {
+  return specs.flatMap((spec) =>
+    mergeRanges(spec.ranges).map((range) => ({
+      order: spec.order,
+      ranges: [range],
+      scopes: spec.scopes
+    }))
+  )
+}
+
+function compareAssertionSpecs(left: AssertionSpec, right: AssertionSpec): number {
+  const leftRange = getPrimaryRange(left)
+  const rightRange = getPrimaryRange(right)
+
+  if (leftRange && rightRange) {
+    if (leftRange.startIndex !== rightRange.startIndex) {
+      return leftRange.startIndex - rightRange.startIndex
+    }
+
+    const leftWidth = leftRange.endIndex - leftRange.startIndex
+    const rightWidth = rightRange.endIndex - rightRange.startIndex
+    if (leftWidth !== rightWidth) {
+      return rightWidth - leftWidth
+    }
+  }
+
+  return left.order - right.order
+}
+
+function getPrimaryRange(spec: AssertionSpec): CaretRange | undefined {
+  return spec.ranges[0]
 }
 
 function renderAssertionSpec(

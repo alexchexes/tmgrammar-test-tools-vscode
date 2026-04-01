@@ -140,6 +140,40 @@ test('minimal mode factors shared internal prefixes even when the root has sibli
   ])
 })
 
+test('minimal mode with compactRanges disabled interleaves split ranges by marker position', () => {
+  const assertionLines = renderAssertionBlock(
+    '//',
+    '  /\\\\d+\\\\w?/',
+    [
+      token(2, 3, 'begin'),
+      token(3, 4, 'outer', 'shared', 'escape'),
+      token(4, 6, 'outer', 'shared', 'class'),
+      token(6, 7, 'outer', 'shared', 'quant'),
+      token(7, 8, 'outer', 'shared', 'escape'),
+      token(8, 10, 'outer', 'shared', 'class'),
+      token(10, 11, 'outer', 'shared', 'quant'),
+      token(11, 12, 'end')
+    ],
+    {
+      compactRanges: false,
+      scopeMode: 'minimal',
+      headerScope: ''
+    }
+  )
+
+  assert.deepEqual(assertionLines, [
+    '//^ begin',
+    '// ^^^^^^^^ outer shared',
+    '// ^ escape',
+    '//  ^^ class',
+    '//    ^ quant',
+    '//     ^ escape',
+    '//      ^^ class',
+    '//        ^ quant',
+    '//         ^ end'
+  ])
+})
+
 test('generated fixture assertions round-trip through vscode-tmgrammar-test in both full and minimal modes', async () => {
   const fixtureGrammarPath = path.resolve(__dirname, '../../fixtures/simple-grammar/syntaxes/simple-poc.tmLanguage.json')
   const grammars = [{ path: fixtureGrammarPath, scopeName: 'source.simple-poc' }]
