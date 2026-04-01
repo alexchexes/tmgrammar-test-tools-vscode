@@ -50,6 +50,74 @@ _GIF fallback for GitHub, which doesn't render `<video>`. [Link to mp4](https://
      - unqualified commands use the current `tmGrammarTestTools.scopeMode: full | minimal` setting (default is `full`)
 3. The extension resolves grammars from installed VS Code grammar contributions (if `tmGrammarTestTools.autoLoadInstalledGrammars` is enabled), package.json grammar contributions, and optional [provider](#grammar-provider) output, in this order. Then it tokenizes from the top of the syntax test up to the targeted source line(s) and inserts or refreshes the assertion block under each targeted line.
 
+User-facing line and column numbers are 1-based unless explicitly noted otherwise.
+
+Most commands also write context, timing, and grammar-loading details to the `TM Grammar Test Tools` Output panel.
+
+You can bind keyboard shortcuts for all the extension commands.
+
+<details>
+<summary>Example <code>keybindings.json</code> snippet</summary>
+
+```jsonc
+[
+  // Line assertions: use the configured tmGrammarTestTools.scopeMode
+  {
+    "key": "ctrl+alt+l",
+    "command": "tmGrammarTestTools.insertLineAssertions",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+alt+shift+l",
+    "command": "tmGrammarTestTools.replaceLineAssertions",
+    "when": "editorTextFocus"
+  },
+
+  // Line assertions: force full or minimal for this invocation
+  {
+    "key": "ctrl+alt+1",
+    "command": "tmGrammarTestTools.insertLineAssertionsFull",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+alt+2",
+    "command": "tmGrammarTestTools.insertLineAssertionsMinimal",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+alt+shift+1",
+    "command": "tmGrammarTestTools.replaceLineAssertionsFull",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+alt+shift+2",
+    "command": "tmGrammarTestTools.replaceLineAssertionsMinimal",
+    "when": "editorTextFocus"
+  },
+
+  // Range assertions: use the configured tmGrammarTestTools.scopeMode
+  {
+    "key": "ctrl+alt+;",
+    "command": "tmGrammarTestTools.insertRangeAssertions",
+    "when": "editorTextFocus"
+  },
+
+  // Range assertions: force full or minimal for this invocation
+  {
+    "key": "ctrl+alt+3",
+    "command": "tmGrammarTestTools.insertRangeAssertionsFull",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+alt+4",
+    "command": "tmGrammarTestTools.insertRangeAssertionsMinimal",
+    "when": "editorTextFocus"
+  }
+]
+```
+
+</details>
+
 ## Command Behavior
 
 - Existing assertion lines are skipped during tokenization so TextMate rule state is preserved across source lines.
@@ -201,6 +269,8 @@ cd <anywhere>
 node <this-repo-root>/out/cli.js --file <syntax-test-file> <...>
 ```
 
+### Arguments and Options
+
 Required:
 
 - `--file <syntax-test-file>` points to the syntax test file.
@@ -215,15 +285,15 @@ Targets:
 Grammar loading:
 
 - `--config <package.json>` loads grammars from a grammar package manifest. If you omit it, the CLI searches upward from `--file` for a `package.json` with `contributes.grammars`.
-- `--provider-command <command>` runs a grammar provider command.
+- `--provider-command <command>` runs the command and loads the returned grammars.
 - `--provider-cwd <cwd>` sets the provider working directory. If omitted, the CLI runs the provider from `${projectRoot}` for `--file`.
-- `--provider-scope <scope>` is repeatable and limits the provider to exact syntax-test header scope matches, similar to `tmGrammarTestTools.grammarProvider.scopes`.
-- `--provider-timeout-ms <ms>` sets the provider timeout.
+- `--provider-scope <scope>` is repeatable and limits provider execution to exact syntax-test header scope matches.
+- `--provider-timeout-ms <ms>` sets the provider timeout; the CLI fails if the provider does not finish in time.
 
 Render options:
 
 - `--scope-mode <full|minimal>` controls full vs minimal rendering.
-- `--compact-ranges` enables disjoint caret compaction.
+- `--compact-ranges` enables disjoint caret compaction. Enabled by default.
 - `--no-compact-ranges` disables disjoint caret compaction.
 
 Output options:
@@ -236,7 +306,6 @@ Output options:
 Notes:
 
 - The CLI prints to stdout and never modifies the file.
-- In JSON output, range targets use `startColumn` / `endColumn` with the same 1-based inclusive column convention as `--range`.
 - With `--log-level info`, the CLI logs a short summary similar to the extension Output panel. `--log-level debug` also logs the effective grammar-usage trace used for assertion generation.
 - It currently loads grammars only from local `package.json` and/or `--provider-command`. It does not auto-load installed VS Code grammars.
 
@@ -258,8 +327,6 @@ node <this-repo-root>/out/cli.js \
 
 Run `npm test`.
 
-The current suite covers renderer compaction/minimal-mode behavior, selection targeting/clipping, round-trips generated fixture assertions through `vscode-tmgrammar-test`, and testing-model failure-range resolution.
-
 ### Fixture
 
 This repo also includes a minimal fixture grammar under `fixtures/simple-grammar`.
@@ -268,7 +335,4 @@ To try it inside this repo workspace:
 
 1. Start the `Run Extension` debug configuration from VS Code's Run and Debug view.
 2. In the Extension Host window, open `fixtures/simple-grammar/tests/example.simple-poc`.
-3. Try any of the following:
-   - use CodeLens above a source line to run `Line Assertions: Full | Minimal`
-   - select part of a source line and use Code Actions (lightbulb) to run `Range Assertions`
-   - run the file or a line from the VS Code Testing UI gutter once assertions are present
+3. Try the extension features: CodeLens above source lines, Code Actions on a selection, command-palette commands, Testing UI gutter, etc.
