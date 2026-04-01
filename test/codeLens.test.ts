@@ -10,12 +10,12 @@ test('code lens anchors above a non-empty source line', () => {
     {
       commandId: 'tmGrammarTestTools.insertLineAssertionsFull',
       sourceDocumentLine: 3,
-      title: 'Line Assertions (Full)'
+      title: 'Line Assertions: Full'
     },
     {
       commandId: 'tmGrammarTestTools.insertLineAssertionsMinimal',
       sourceDocumentLine: 3,
-      title: 'Line Assertions (Minimal)'
+      title: 'Minimal'
     }
   ])
 })
@@ -30,12 +30,12 @@ test('code lens skips blank source lines', () => {
     {
       commandId: 'tmGrammarTestTools.insertLineAssertionsFull',
       sourceDocumentLine: 5,
-      title: 'Line Assertions (Full)'
+      title: 'Line Assertions: Full'
     },
     {
       commandId: 'tmGrammarTestTools.insertLineAssertionsMinimal',
       sourceDocumentLine: 5,
-      title: 'Line Assertions (Minimal)'
+      title: 'Minimal'
     }
   ])
 })

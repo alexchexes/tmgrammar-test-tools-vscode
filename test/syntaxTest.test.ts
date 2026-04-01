@@ -96,6 +96,30 @@ test('line targeting skips blank source lines for non-empty selections', () => {
   )
 })
 
+test('line targeting skips whitespace-only source lines when mixed with non-blank lines', () => {
+  const targets = findTargetSourceLinesForSelections(
+    [
+      { documentLine: 1, text: 'alpha' },
+      { documentLine: 2, text: '   ' },
+      { documentLine: 4, text: 'beta' }
+    ],
+    [
+      {
+        activeLine: 1,
+        endCharacter: 1,
+        endLine: 4,
+        isEmpty: false,
+        startLine: 1
+      }
+    ]
+  )
+
+  assert.deepEqual(
+    targets.map((target) => target.documentLine),
+    [1, 4]
+  )
+})
+
 test('line targeting still allows empty selections on blank source lines', () => {
   const targets = findTargetSourceLinesForSelections(sourceLinesWithBlank, [
     {
@@ -110,5 +134,30 @@ test('line targeting still allows empty selections on blank source lines', () =>
   assert.deepEqual(
     targets.map((target) => target.documentLine),
     [2]
+  )
+})
+
+test('line targeting allows a non-empty selection made entirely of whitespace-only source lines', () => {
+  const targets = findTargetSourceLinesForSelections(
+    [
+      { documentLine: 1, text: 'alpha' },
+      { documentLine: 2, text: '    ' },
+      { documentLine: 3, text: '  ' },
+      { documentLine: 4, text: 'beta' }
+    ],
+    [
+      {
+        activeLine: 2,
+        endCharacter: 2,
+        endLine: 3,
+        isEmpty: false,
+        startLine: 2
+      }
+    ]
+  )
+
+  assert.deepEqual(
+    targets.map((target) => target.documentLine),
+    [2, 3]
   )
 })

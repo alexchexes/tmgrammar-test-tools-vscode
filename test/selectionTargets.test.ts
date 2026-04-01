@@ -23,6 +23,19 @@ const sourceLines: SourceLine[] = [
   { documentLine: 3, text: 'foo = qux' }
 ]
 
+const sourceLinesWithWhitespaceOnly: SourceLine[] = [
+  { documentLine: 1, text: 'bar();' },
+  { documentLine: 2, text: '    ' },
+  { documentLine: 3, text: 'foo = qux' }
+]
+
+const sourceLinesWithOnlyWhitespaceSelection: SourceLine[] = [
+  { documentLine: 1, text: 'bar();' },
+  { documentLine: 2, text: '    ' },
+  { documentLine: 3, text: '  ' },
+  { documentLine: 4, text: 'foo = qux' }
+]
+
 test('range-derived targets skip blank source lines while keeping non-blank touched lines', () => {
   const targets = collectSelectionRangeTargets(sourceLines, [
     {
@@ -49,6 +62,71 @@ test('range-derived targets skip blank source lines while keeping non-blank touc
       {
         documentLine: 3,
         explicitRanges: [{ endIndex: 2, startIndex: 0 }]
+      }
+    ]
+  )
+})
+
+test('range-derived targets skip whitespace-only source lines when mixed with non-blank touched lines', () => {
+  const targets = collectSelectionRangeTargets(sourceLinesWithWhitespaceOnly, [
+    {
+      activeCharacter: 1,
+      activeLine: 1,
+      endCharacter: 2,
+      endLine: 3,
+      isEmpty: false,
+      startCharacter: 2,
+      startLine: 1
+    }
+  ])
+
+  assert.deepEqual(
+    targets.map((target) => ({
+      documentLine: target.sourceLine.documentLine,
+      explicitRanges: target.explicitRanges
+    })),
+    [
+      {
+        documentLine: 1,
+        explicitRanges: [{ endIndex: 6, startIndex: 2 }]
+      },
+      {
+        documentLine: 3,
+        explicitRanges: [{ endIndex: 2, startIndex: 0 }]
+      }
+    ]
+  )
+})
+
+test('range-derived targets keep a non-empty selection made entirely of whitespace-only source lines', () => {
+  const targets = collectSelectionRangeTargets(sourceLinesWithOnlyWhitespaceSelection, [
+    {
+      activeCharacter: 3,
+      activeLine: 2,
+      endCharacter: 2,
+      endLine: 3,
+      isEmpty: false,
+      startCharacter: 1,
+      startLine: 2
+    }
+  ])
+
+  assert.deepEqual(
+    targets.map((target) => ({
+      documentLine: target.sourceLine.documentLine,
+      explicitRanges: target.explicitRanges,
+      sourceText: target.sourceLine.text
+    })),
+    [
+      {
+        documentLine: 2,
+        explicitRanges: [{ endIndex: 4, startIndex: 1 }],
+        sourceText: '    '
+      },
+      {
+        documentLine: 3,
+        explicitRanges: [{ endIndex: 2, startIndex: 0 }],
+        sourceText: '  '
       }
     ]
   )

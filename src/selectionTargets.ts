@@ -27,6 +27,7 @@ export function collectSelectionRangeTargets(
   selections: readonly SelectionInput[]
 ): SelectionRangeTarget[] {
   const targets = new Map<number, SelectionRangeTarget>()
+  const sourceLinesByDocumentLine = new Map(sourceLines.map((sourceLine) => [sourceLine.documentLine, sourceLine]))
 
   for (const selection of selections) {
     if (selection.isEmpty) {
@@ -39,12 +40,17 @@ export function collectSelectionRangeTargets(
       continue
     }
 
+    const allowWhitespaceOnlySourceLines = isWhitespaceOnlySelection(selection, sourceLinesByDocumentLine)
     const endLineInclusive =
       selection.startLine === selection.endLine || selection.endCharacter > 0 ? selection.endLine : selection.endLine - 1
 
     for (let lineNumber = selection.startLine; lineNumber <= endLineInclusive; lineNumber++) {
       const sourceLine = findTargetSourceLine(sourceLines, lineNumber)
-      if (!sourceLine || sourceLine.documentLine !== lineNumber || sourceLine.text.trim().length === 0) {
+      if (
+        !sourceLine ||
+        sourceLine.documentLine !== lineNumber ||
+        (sourceLine.text.trim().length === 0 && !allowWhitespaceOnlySourceLines)
+      ) {
         continue
       }
 
@@ -68,6 +74,35 @@ export function collectSelectionRangeTargets(
       cursorPositions: [...target.cursorPositions].sort((left, right) => left - right)
     }))
     .sort((left, right) => left.sourceLine.documentLine - right.sourceLine.documentLine)
+}
+
+function isWhitespaceOnlySelection(
+  selection: SelectionInput,
+  sourceLinesByDocumentLine: ReadonlyMap<number, SourceLine>
+): boolean {
+  if (selection.isEmpty) {
+    return false
+  }
+
+  const endLineInclusive =
+    selection.startLine === selection.endLine || selection.endCharacter > 0 ? selection.endLine : selection.endLine - 1
+
+  if (endLineInclusive < selection.startLine) {
+    return false
+  }
+
+  let foundWhitespaceOnlyLine = false
+
+  for (let lineNumber = selection.startLine; lineNumber <= endLineInclusive; lineNumber++) {
+    const sourceLine = sourceLinesByDocumentLine.get(lineNumber)
+    if (!sourceLine || sourceLine.text.length === 0 || sourceLine.text.trim().length > 0) {
+      return false
+    }
+
+    foundWhitespaceOnlyLine = true
+  }
+
+  return foundWhitespaceOnlyLine
 }
 
 export function resolveSelectionRanges(

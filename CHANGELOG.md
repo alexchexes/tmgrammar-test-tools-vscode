@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 - 2026-03-30
+## 0.1.0 - 2026-04-01
 
 - Initial public preview release.
 - Generate line and range assertions in full or minimal scope modes.

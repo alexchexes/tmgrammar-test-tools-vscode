@@ -29,6 +29,6 @@ function createCodeLensSpec(sourceDocumentLine: number, scopeMode: ScopeMode): L
         ? 'tmGrammarTestTools.insertLineAssertionsFull'
         : 'tmGrammarTestTools.insertLineAssertionsMinimal',
     sourceDocumentLine,
-    title: `Line Assertions (${scopeMode === 'full' ? 'Full' : 'Minimal'})`
+    title: scopeMode === 'full' ? 'Line Assertions: Full' : 'Minimal'
   }
 }

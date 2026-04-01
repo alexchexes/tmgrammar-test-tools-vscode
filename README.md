@@ -2,8 +2,6 @@
 
 Generate, refresh, and run TextMate syntax test assertions directly in VS Code. The extension is designed to work alongside [`vscode-tmgrammar-test`](https://github.com/PanAeon/vscode-tmgrammar-test).
 
-## Quick Demo
-
 ### Generate Assertions
 
 <video controls muted playsinline poster="https://raw.githubusercontent.com/alexchexes/vscode-tmgrammar-test-tools/master/media/readme/insert-assertions.png">
@@ -42,59 +40,78 @@ _GIF fallback for GitHub, which doesn't render `<video>`. [Link to mp4](https://
    <comment token> SYNTAX TEST "<language scope>" "optional description"
    ```
 
-2. Run one of the assertion commands:
-   - `Insert Line Assertions` to generate or safely refresh assertions for whole source lines
-   - `Replace Line Assertions` to fully replace an existing line assertion block
+2. Use CodeLens, Code Actions (lightbulb), or the Command Palette to run one of:
+   - `Insert Line Assertions` to generate or safely refresh assertions for whole source line(s)
+   - `Replace Line Assertions` to fully replace an existing line(s) assertion block
    - `Insert Range Assertions` to generate assertions only for the selected range or token at the cursor
-   - use the `Full` and `Minimal` variants when you want to override the default scope mode for one invocation:
-     - `Full`: emits full scope stacks starting from the syntax-test header scope
-     - `Minimal`: applies a heuristic reduction and factoring pass to keep the output shorter while preserving useful scope distinctions
-     - unqualified `Insert ...` / `Replace ...` commands: use the current `tmGrammarTestTools.scopeMode` setting
-3. The extension resolves grammars from installed VS Code grammar contributions (if enabled), local config/package grammars, and optional [provider](#grammar-provider) output, with later sources taking precedence for exact scope-name matches, then tokenizes from the top of the syntax test through the targeted source line(s) and inserts or refreshes the matching assertion block.
+   - `... (Full)` / `... (Minimal)` variants:
+     - `Full` emits full scope stacks starting from the syntax-test header scope
+     - `Minimal` applies a heuristic reduction and factoring pass to keep the output shorter while preserving useful scope distinctions
+     - unqualified commands use the current `tmGrammarTestTools.scopeMode: full | minimal` setting (default is `full`)
+3. The extension resolves grammars from installed VS Code grammar contributions (if `tmGrammarTestTools.autoLoadInstalledGrammars` is enabled), package.json grammar contributions, and optional [provider](#grammar-provider) output, in this order. Then it tokenizes from the top of the syntax test up to the targeted source line(s) and inserts or refreshes the assertion block under each targeted line.
 
 ## Command Behavior
 
 - Existing assertion lines are skipped during tokenization so TextMate rule state is preserved across source lines.
-- First-column tokens are emitted with the `<---` syntax when needed.
-- `Line` commands are line-oriented:
-  - with empty selection they target the line at each cursor
-  - with non-empty selection they regenerate every touched source line top-to-bottom, and assertion lines map back to their owning source line.
-- `Insert Line` and `Insert Range` commands use safe refresh by default: simple positive assertions are regenerated, while negative or mixed assertion lines are preserved.
-- `Replace Line` commands are destructive and replace the entire generated assertion block for the targeted line.
-- `Range` commands are range-oriented and operate on source text:
-  - with non-empty selection they target the selected characters
-  - with empty selection they resolve the token at the cursor position(s) and use that token's range. For example, if cursor is in the middle of `quux;`, it will expand to full `quux` token.
-  - when only part of a line is selected and the source line already has assertions, it inserts new assertions into the existing block instead of replacing it.
-- `Range` commands skip blank or whitespace-only source lines only for range-derived targets.
-- `tmGrammarTestTools.scopeMode` can be `full` or `minimal`. The generic `Line` and `Range` commands use that setting. The explicit `Full` and `Minimal` commands override it for that invocation.
-- `minimal` drops the header scope only when every token shares it and there is at least one more specific scope to show, then emits broader shared scopes once before narrower child scopes.
+- First-column tokens are emitted with the `<--`/`<~--` syntax when needed.
+- `Line` assertions commands are line-oriented:
+  - with empty selection they target the line at cursor(s)
+  - with non-empty selection they target each touched non-blank source line top-to-bottom
+  - a non-empty selection made entirely of whitespace-only source lines is treated as intentional and command targets those lines too
+- `Insert Line` and `Insert Range` either insert new assertions or, for existing blocks, perform a safe refresh, meaning they don't touch assertion lines that contain negative assertions.
+- `Range` commands are selection- or token-**range** oriented:
+  - with a non-empty selection(s), they generate assertions for the selected characters
+  - with an empty selection(s), they resolve the token at the cursor position(s) and use that token as the range. For example, if the cursor is in the middle of `quux;`, it expands to the full `quux` token and emits assertions for it
+  - when only part of a line is selected and that line already has assertions, they insert new assertions into the existing block (instead of replacing it)
+  - when the whole line is selected, they behave like `Line` assertion commands
+  - that behavior is independent for each line touched by the selection(s) or cursor(s)
+  - `Range` commands skip blank or whitespace-only lines, unless selection is made entirely of whitespace-only lines.
+- `(Minimal)` command variants:
+  - may omit the header scope when it is shared by every token and there is at least one more specific scope to show.
+  - factor shared parent scopes so broader scopes are emitted once before narrower child scopes
+- `Replace Line` commands always replace the whole assertion block for each targeted source line, so use with caution: they may wipe out negative assertions and weaken the test.
+
+Code Actions and CodeLens expose the safe `Insert` commands. The potentially destructive `Replace Line` commands are available from the command palette.
+
+## Settings
+
+- `tmGrammarTestTools.scopeMode` can be `full` or `minimal`. The generic `Line` and `Range` commands use that setting. The explicit `Full` and `Minimal` commands override it for that invocation. Default is `full`.
 - `tmGrammarTestTools.compactRanges` defaults to `true` and merges disjoint caret ranges when they share the same rendered scope list and the tmgrammar assertion syntax can represent the merge.
-- `tmGrammarTestTools.logGrammarDetails` defaults to `false` and, when enabled, logs detailed grammar selection info in the Output panel. Assertion generation logs the actually used grammar scopes with source labels; test runs log the merged grammar load order.
+- `tmGrammarTestTools.autoLoadInstalledGrammars` defaults to `true` and controls whether installed VS Code grammars are loaded before local and provider grammars.
 - `tmGrammarTestTools.enableCodeActions` defaults to `true` and adds Code Actions for inserting line or range assertions at the current cursor or selection.
 - `tmGrammarTestTools.enableCodeLens` defaults to `true` and adds line-oriented CodeLens commands above non-empty source lines.
-- Code Actions and CodeLens expose the safe `Insert` commands. The destructive `Replace Line` commands are available from the command palette.
+- `tmGrammarTestTools.configPath` points to the grammar package `package.json` when the nearest one is not the right source for the current syntax test.
+- `tmGrammarTestTools.grammarProvider.*` controls optional external grammar loading. See [Grammar Provider](#grammar-provider).
+
+- _Debugging_: `tmGrammarTestTools.logGrammarDetails` defaults to `false` and, when enabled, logs detailed grammar selection info in the Output panel. Assertion generation logs the actually used grammar scopes with source labels; test runs log the merged grammar load order.
 
 ## Testing UI
 
-- Open syntax test files are discovered in VS Code's Testing view.
+The extension integrates with VS Code’s native Testing UI.
+
+- Open syntax test files are discovered in the Testing view.
 - The extension creates one test item per open syntax test file and one child item per source line that has an assertion block.
 - You can run a whole file or a single asserted source line from the Testing view or gutter.
-- The Testing UI also exposes a `Debug` action. For now it uses the same runner as `Run`; debugger integration is not implemented yet.
 - Test runs use the current editor text, **including unsaved edits**.
-- Failures are shown in the Test Results UI. The `Go to Error` action works on individual failures and tries to select the failing assertion range on the source line.
+- Failures are shown in the Test Results UI. The `Go to Error` action selects the failing assertion line.
+- Right-clicking a failing test exposes `Go to Source Range`, which selects the source-line range covered by that failing assertion.
+- Currently, the `Debug` action uses the same runner as `Run`; debugger integration is not implemented yet.
 
 ## Grammar Loading
 
 - If your syntax test is not inside the grammar extension repo, set `tmGrammarTestTools.configPath` to the relevant `package.json`.
-- By default, grammar sources are merged from three places: installed VS Code extensions (including built-in ones), the nearest or configured local `package.json`, and the optional grammar provider command.
-- `tmGrammarTestTools.autoLoadInstalledGrammars` defaults to `true`. When it is `false`, installed VS Code grammars are skipped and only local `package.json` plus provider grammars are used.
-- For the same exact scope name, later sources win: installed VS Code grammars are loaded first (when auto-loading is enabled), then local `package.json` grammars, then provider grammars.
+- By default, grammar sources are merged from three places:
+  - installed VS Code extensions (including built-in ones)
+  - the nearest or configured local `package.json`, and
+  - the optional [grammar provider](#grammar-provider) command.
+- When `tmGrammarTestTools.autoLoadInstalledGrammars` is `false`, installed VS Code grammars are skipped and only local `package.json` plus provider grammars are used.
+- For the same exact scope name, precedence follows that fixed load order: installed VS Code grammars first (when enabled) → then local `package.json` grammars → then provider grammars.
 - Injection grammars are additive. A local or provider injection grammar can inject into a base grammar that comes from an installed or built-in VS Code extension, such as a repo contributing `source.js.regexp` while VS Code supplies `source.js`.
 - If `tmGrammarTestTools.grammarProvider.command` is set, the extension runs it on each invocation and uses the returned grammar files for the current dump.
 
 ## Grammar Provider
 
-You can configure a grammar provider via workspace, workspace-folder, or global `settings.json`. That is useful when the grammar set you want to test is not contributed directly via a nearby `package.json`, or is not fully described by it. For example, a repo may use generated grammars, extra base grammars, or test-only grammar files.
+You can configure a grammar provider via workspace, workspace-folder, or global `settings.json`. That is useful when the grammar(s) you want to test is not contributed directly via a nearby `package.json`, or is not fully described by it. For example, a repo may use generated grammars, extra base grammars, or test-only grammar files. Another case is when the grammar source is in `.cson` and the actual TextMate grammar files require a build step.
 
 Example usage:
 
@@ -112,7 +129,7 @@ Provider command output can be either:
 - a JSON array of paths or grammar objects
 - a JSON object with a `grammars` array
 
-Recommended output shape:
+Example output shape:
 
 ```json
 [
@@ -151,20 +168,23 @@ If `${workspaceFolder}` is used in `command` or `cwd`, the active file must belo
 
 If `tmGrammarTestTools.grammarProvider.cwd` is empty or unset, the extension runs the provider command from the active document's workspace folder and falls back to `${projectRoot}` when the file is outside the workspace.
 
-`command` and `cwd` are resolved independently, so you can specify one in the workspace's `.vscode/settings.json` and the other in global `settings.json`, but in most cases it is reasonable to keep them together in the same settings file.
+`command` and `cwd` are resolved independently, so you can specify one in the workspace's `.vscode/settings.json` and the other in global `settings.json`, but in most cases it is reasonable to keep them together.
 
 ## CLI
 
-For scripted use outside VS Code:
+For scripted use outside VS Code.
+
+The CLI is read-only: it prints generated assertions to stdout and never modifies the file.
 
 ```bash
-# From this repo:
+cd <this-repo-root>
 npm run dump-assertions -- --file <syntax-test-file> --line <lineNumber>
 # or
 npm run dump-assertions -- --file <syntax-test-file> --range <startLine:startColumn-endLine:endColumn>
 
 # From outside this repo:
-# first compile from this repo:
+
+# first compile:
 cd <this-repo-root> && npm run compile
 
 # then invoke it from anywhere:
@@ -179,8 +199,8 @@ Required:
 
 Targets:
 
-- `--line <lineNumber>` generates assertions for a 1-based document line containing source text. You can repeat it.
-- `--range <startLine:startColumn-endLine:endColumn>` generates assertions for a selected range using 1-based inclusive columns. You can repeat it.
+- `--line <lineNumber>` generates assertions for a line containing source text. 1-based. You can repeat it.
+- `--range <startLine:startColumn-endLine:endColumn>` generates assertions for a selected range using 1-based inclusive columns. You can repeat it too.
 - You can specify both at the same time.
 
 Grammar loading:
@@ -206,7 +226,7 @@ Output options:
 
 Notes:
 
-- The CLI prints to stdout. It does not modify the file.
+- The CLI prints to stdout; never modifes the file.
 - With `--log-level info`, the CLI logs a short summary similar to the extension Output panel. `--log-level debug` also logs the effective grammar-usage trace used for assertion generation.
 - It currently loads grammars only from local `package.json` and/or `--provider-command`. It does not auto-load installed VS Code grammars.
 
@@ -236,6 +256,9 @@ This repo also includes a minimal fixture grammar under `fixtures/simple-grammar
 
 To try it inside this repo workspace:
 
-1. Press `F5` to launch the extension host.
-2. Open `fixtures/simple-grammar/tests/example.simple-poc`.
-3. Place the cursor on a source line and run `TM Grammar Test Tools: Insert Line Assertions`.
+1. Start the `Run Extension` debug configuration from VS Code's Run and Debug view.
+2. In the Extension Host window, open `fixtures/simple-grammar/tests/example.simple-poc`.
+3. Try any of the following:
+   - use CodeLens above a source line to run `Line Assertions: Full | Minimal`
+   - select part of a source line and use Code Actions (lightbulb) to run `Range Assertions`
+   - run the file or a line from the VS Code Testing UI gutter once assertions are present

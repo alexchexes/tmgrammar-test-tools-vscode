@@ -78,10 +78,17 @@ export function findTargetSourceLinesForSelections(
   const sourceLinesByDocumentLine = new Map(sourceLines.map((sourceLine) => [sourceLine.documentLine, sourceLine]))
 
   for (const selection of selections) {
+    const allowWhitespaceOnlySourceLines = isWhitespaceOnlySelection(selection, sourceLinesByDocumentLine)
+
     for (const lineNumber of getTouchedDocumentLines(selection)) {
       const exactSourceLine = sourceLinesByDocumentLine.get(lineNumber)
       const sourceLine = exactSourceLine ?? findTargetSourceLine(sourceLines, lineNumber)
-      if (sourceLine && !selection.isEmpty && sourceLine.text.trim().length === 0) {
+      if (
+        sourceLine &&
+        !selection.isEmpty &&
+        sourceLine.text.trim().length === 0 &&
+        !allowWhitespaceOnlySourceLines
+      ) {
         continue
       }
 
@@ -92,6 +99,33 @@ export function findTargetSourceLinesForSelections(
   }
 
   return [...targetSourceLines.values()].sort((left, right) => left.documentLine - right.documentLine)
+}
+
+function isWhitespaceOnlySelection(
+  selection: SelectionLineTarget,
+  sourceLinesByDocumentLine: ReadonlyMap<number, SourceLine>
+): boolean {
+  if (selection.isEmpty) {
+    return false
+  }
+
+  const touchedDocumentLines = getTouchedDocumentLines(selection)
+  if (touchedDocumentLines.length === 0) {
+    return false
+  }
+
+  let foundWhitespaceOnlyLine = false
+
+  for (const lineNumber of touchedDocumentLines) {
+    const sourceLine = sourceLinesByDocumentLine.get(lineNumber)
+    if (!sourceLine || sourceLine.text.length === 0 || sourceLine.text.trim().length > 0) {
+      return false
+    }
+
+    foundWhitespaceOnlyLine = true
+  }
+
+  return foundWhitespaceOnlyLine
 }
 
 function getTouchedDocumentLines(selection: SelectionLineTarget): number[] {
