@@ -236,6 +236,7 @@ Output options:
 Notes:
 
 - The CLI prints to stdout and never modifies the file.
+- In JSON output, range targets use `startColumn` / `endColumn` with the same 1-based inclusive column convention as `--range`.
 - With `--log-level info`, the CLI logs a short summary similar to the extension Output panel. `--log-level debug` also logs the effective grammar-usage trace used for assertion generation.
 - It currently loads grammars only from local `package.json` and/or `--provider-command`. It does not auto-load installed VS Code grammars.
 

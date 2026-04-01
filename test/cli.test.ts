@@ -73,7 +73,7 @@ test('CLI generates range assertions from explicit 1-based inclusive columns', a
       assertionLines: string[]
       documentLine: number
       kind: string
-      ranges: Array<{ startIndex: number; endIndex: number }>
+      ranges: Array<{ startColumn: number; endColumn: number }>
       sourceText: string
     }>
   }
@@ -83,10 +83,26 @@ test('CLI generates range assertions from explicit 1-based inclusive columns', a
       assertionLines: ['//              ^^ string.quoted.double.simple-poc'],
       documentLine: 4,
       kind: 'range',
-      ranges: [{ startIndex: 16, endIndex: 18 }],
+      ranges: [{ startColumn: 17, endColumn: 18 }],
       sourceText: 'const answer = "ok"'
     }
   ])
+})
+
+test('CLI compare mode prints range headers using 1-based inclusive columns', async () => {
+  const cliPath = path.resolve(__dirname, '../src/cli.js')
+  const fixtureConfigPath = path.resolve(__dirname, '../../fixtures/simple-grammar/package.json')
+  const fixtureTestPath = path.resolve(__dirname, '../../fixtures/simple-grammar/tests/example.simple-poc')
+
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    [cliPath, '--file', fixtureTestPath, '--config', fixtureConfigPath, '--range', '4:17-4:18', '--compare'],
+    {
+      cwd: path.resolve(__dirname, '../..')
+    }
+  )
+
+  assert.match(stdout, /^range 4 \(17-18\)\r?\nconst answer = "ok"/)
 })
 
 test('CLI plain mode prints only generated assertion lines', async () => {

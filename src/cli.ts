@@ -63,7 +63,7 @@ interface CliRangeTargetOutput {
   comparison?: CliScopeModeComparison
   documentLine: number
   kind: 'range'
-  ranges: readonly { endIndex: number; startIndex: number }[]
+  ranges: readonly { endColumn: number; startColumn: number }[]
   sourceText: string
 }
 
@@ -238,7 +238,10 @@ export async function runCli(argv: readonly string[]): Promise<CliOutput> {
         args.outputMode === 'compare' ? await generateRangeComparison(generationContext, sourceLineIndex, rangeTarget, args) : undefined,
       documentLine: rangeTarget.sourceLine.documentLine + 1,
       kind: 'range',
-      ranges: generated.ranges,
+      ranges: generated.ranges.map((range) => ({
+        endColumn: range.endIndex,
+        startColumn: range.startIndex + 1
+      })),
       sourceText: rangeTarget.sourceLine.text
     })
   }
@@ -509,7 +512,7 @@ function formatCompareTargetHeader(target: CliTargetOutput): string {
     return `line ${target.documentLine}`
   }
 
-  const ranges = target.ranges.map((range) => `${range.startIndex + 1}-${range.endIndex}`).join(', ')
+  const ranges = target.ranges.map((range) => `${range.startColumn}-${range.endColumn}`).join(', ')
   return `range ${target.documentLine}${ranges.length > 0 ? ` (${ranges})` : ''}`
 }
 
