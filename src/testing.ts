@@ -21,6 +21,7 @@ import {
   resolveFailureAssertionRange
 } from './testingModel'
 import { rememberTestFailureSourceLocation } from './testMessageActions'
+import { parseGrammarTestCaseWithCompat } from './tmgrammarTestCompat'
 
 const { createRegistry } = require('vscode-tmgrammar-test/dist/common/index') as {
   createRegistry: (grammars: Array<{ injectTo?: string[]; language?: string; path: string; scopeName: string }>) => unknown
@@ -151,7 +152,7 @@ async function runTestItem(
   try {
     const document = await vscode.workspace.openTextDocument(target.uri)
     const text = document.getText()
-    const parsedTestCase = parseGrammarTestCase(text)
+    const parsedTestCase = parseGrammarTestCaseWithCompat(text, parseGrammarTestCase)
     const header = parseHeaderLine(document.lineCount > 0 ? document.lineAt(0).text : '')
     const lines = splitIntoLines(text)
     const runnableSourceLines = collectRunnableSourceLinesFromLines(lines, header.commentToken)
