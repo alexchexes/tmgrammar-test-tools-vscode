@@ -1,6 +1,6 @@
 # TM Grammar Test Tools
 
-Generate, refresh, and run assertions for [VSCode Textmate grammar tests](https://github.com/PanAeon/vscode-tmgrammar-test) directly in VS Code. Works out of the box in grammar packages, and in any test file once the needed grammar is available in VS Code or [configured](#grammar-loading).
+Generate, refresh, and run assertions for [VSCode TextMate grammar tests](https://github.com/PanAeon/vscode-tmgrammar-test) directly in VS Code. Works out of the box in grammar packages, and in any test file once the needed grammar is available in VS Code or [configured](#grammar-loading).
 
 ### Generate Assertions
 
