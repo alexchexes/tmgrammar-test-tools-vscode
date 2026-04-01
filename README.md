@@ -1,6 +1,6 @@
 # TM Grammar Test Tools
 
-Generate, refresh, and run TextMate syntax test assertions directly in VS Code. The extension is designed to work alongside [`vscode-tmgrammar-test`](https://github.com/PanAeon/vscode-tmgrammar-test).
+Generate, refresh, and run assertions for [VSCode Textmate grammar tests](https://github.com/PanAeon/vscode-tmgrammar-test) directly in VS Code. Works out of the box in grammar packages, and in any test file once the needed grammar is available in VS Code or [configured](#grammar-loading).
 
 ### Generate Assertions
 
@@ -54,7 +54,7 @@ _GIF fallback for GitHub, which doesn't render `<video>`. [Link to mp4](https://
 
 - Existing assertion lines are skipped during tokenization so TextMate rule state is preserved across source lines.
 - First-column tokens are emitted with the `<--`/`<~--` syntax when needed.
-- `Line` assertions commands are line-oriented:
+- `Line` assertion commands are line-oriented:
   - with empty selection they target the line at cursor(s)
   - with non-empty selection they target each touched non-blank source line top-to-bottom
   - a non-empty selection made entirely of whitespace-only source lines is treated as intentional and command targets those lines too
@@ -92,6 +92,7 @@ The extension integrates with VS Code’s native Testing UI.
 - Open syntax test files are discovered in the Testing view.
 - The extension creates one test item per open syntax test file and one child item per source line that has an assertion block.
 - You can run a whole file or a single asserted source line from the Testing view or gutter.
+- Test execution uses the real `vscode-tmgrammar-test` runner bundled with the extension.
 - Test runs use the current editor text, **including unsaved edits**.
 - Failures are shown in the Test Results UI. The `Go to Error` action selects the failing assertion line.
 - Right-clicking a failing test exposes `Go to Source Range`, which selects the source-line range covered by that failing assertion.
@@ -99,11 +100,19 @@ The extension integrates with VS Code’s native Testing UI.
 
 ## Grammar Loading
 
-- If your syntax test is not inside the grammar extension repo, set `tmGrammarTestTools.configPath` to the relevant `package.json`.
-- By default, grammar sources are merged from three places:
-  - installed VS Code extensions (including built-in ones)
-  - the nearest or configured local `package.json`, and
-  - the optional [grammar provider](#grammar-provider) command.
+The extension can load grammars from:
+
+- installed VS Code extensions (including built-in ones)
+- the nearest local `package.json`, or the one pointed to by `tmGrammarTestTools.configPath`
+- the optional [grammar provider](#grammar-provider) command
+
+If your syntax test is not inside the grammar extension repo, the usual ways to point it at the right grammars are:
+
+- set `tmGrammarTestTools.configPath` to the `package.json` that contributes the relevant grammar
+- use a [grammar provider](#grammar-provider) when the needed grammars are generated, split across files, or not fully described by `package.json`
+
+The loading rules are then:
+
 - When `tmGrammarTestTools.autoLoadInstalledGrammars` is `false`, installed VS Code grammars are skipped and only local `package.json` plus provider grammars are used.
 - For the same exact scope name, precedence follows that fixed load order: installed VS Code grammars first (when enabled) → then local `package.json` grammars → then provider grammars.
 - Injection grammars are additive. A local or provider injection grammar can inject into a base grammar that comes from an installed or built-in VS Code extension, such as a repo contributing `source.js.regexp` while VS Code supplies `source.js`.
@@ -111,7 +120,7 @@ The extension integrates with VS Code’s native Testing UI.
 
 ## Grammar Provider
 
-You can configure a grammar provider via workspace, workspace-folder, or global `settings.json`. That is useful when the grammar(s) you want to test is not contributed directly via a nearby `package.json`, or is not fully described by it. For example, a repo may use generated grammars, extra base grammars, or test-only grammar files. Another case is when the grammar source is in `.cson` and the actual TextMate grammar files require a build step.
+You can configure a grammar provider via workspace, workspace-folder, or global `settings.json`. That is useful when the grammars you want to test are not contributed directly via a nearby `package.json`, or are not fully described by it. For example, a repo may use generated grammars, extra base grammars, or test-only grammar files. Another case is when the grammar source is in `.cson` and the actual TextMate grammar files require a build step.
 
 Example usage:
 
@@ -226,7 +235,7 @@ Output options:
 
 Notes:
 
-- The CLI prints to stdout; never modifes the file.
+- The CLI prints to stdout and never modifies the file.
 - With `--log-level info`, the CLI logs a short summary similar to the extension Output panel. `--log-level debug` also logs the effective grammar-usage trace used for assertion generation.
 - It currently loads grammars only from local `package.json` and/or `--provider-command`. It does not auto-load installed VS Code grammars.
 
