@@ -54,6 +54,8 @@ User-facing line and column numbers are 1-based unless explicitly noted otherwis
 
 Most commands also write context, timing, and grammar-loading details to the `TM Grammar Test Tools` Output panel.
 
+Testing UI runs are subject to VS Code's own `testing.saveBeforeTest` behavior; see [Testing UI](#testing-ui).
+
 You can bind keyboard shortcuts for all the extension commands.
 
 <details>
@@ -161,7 +163,7 @@ The extension integrates with VS Code’s native Testing UI.
 - The extension creates one test item per open syntax test file and one child item per source line that has an assertion block.
 - You can run a whole file or a single asserted source line from the Testing view or gutter.
 - Test execution uses the real `vscode-tmgrammar-test` runner bundled with the extension.
-- Test runs use the current editor text, **including unsaved edits**.
+- Test runs use the current editor text, **including unsaved edits**, but VS Code may still save the file before running tests unless `testing.saveBeforeTest` is disabled in your settings.json.
 - Failures are shown in the Test Results UI. The `Go to Error` action selects the failing assertion line.
 - Right-clicking a failing test exposes `Go to Source Range`, which selects the source-line range covered by that failing assertion.
 - Currently, the `Debug` action uses the same runner as `Run`; debugger integration is not implemented yet.
