@@ -5,13 +5,14 @@ import { formatDuration, logInfo, startStopwatch } from './log'
 import { normalizeConfiguredProviderScopes, shouldRunProviderForScope } from './providerScopeFilter'
 import { ProviderTemplateContext, resolveCommandTemplate, resolveProviderCwdTemplate } from './providerTemplates'
 import { runGrammarProvider } from './providerRunner'
+import { getEffectiveTmGrammarConfiguration, getEffectiveWorkspaceFolder } from './settings'
 
 export async function loadProviderGrammarContributions(
   document: vscode.TextDocument,
   targetScopeName: string
 ): Promise<GrammarContribution[]> {
   const stopwatch = startStopwatch()
-  const configuration = vscode.workspace.getConfiguration('tmGrammarTestTools', document.uri)
+  const configuration = getEffectiveTmGrammarConfiguration(document)
   const configuredCommand = configuration.get<string>('grammarProvider.command')?.trim()
 
   if (!configuredCommand) {
@@ -57,6 +58,6 @@ function toProviderTemplateContext(document: vscode.TextDocument, projectRoot: s
   return {
     filePath: document.uri.fsPath,
     projectRoot,
-    workspaceFolder: vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
+    workspaceFolder: getEffectiveWorkspaceFolder(document)?.uri.fsPath
   }
 }

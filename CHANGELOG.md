@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1 - 2026-04-02
+
+- Fix: Handle unsaved files properly, so grammar resolution no longer stalls for them.
+- Fix: For files outside the current workspace, ignore workspace-scoped settings and use only global/default settings (while keeping untitled drafts in workspace context).
+
 ## 0.1.0 - 2026-04-01
 
 - Initial public preview release.

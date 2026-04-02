@@ -7,6 +7,7 @@ import { loadProviderGrammarContributions } from './grammarProvider'
 import { loadInstalledGrammarContributions } from './installedGrammars'
 import { formatDuration, logInfo, startStopwatch } from './log'
 import { ScopeMode } from './render'
+import { getEffectiveTmGrammarConfiguration, getEffectiveWorkspaceFolder } from './settings'
 import { resolveScopeMode } from './scopeMode'
 import { collectSourceLines, parseHeaderLine, SourceLine } from './syntaxTest'
 import { collectTabbedTargetDocumentLines, formatTabOffsetWarning } from './tabWarnings'
@@ -25,8 +26,8 @@ export async function loadInsertContext(
 ): Promise<InsertContext> {
   const stopwatch = startStopwatch()
   const document = editor.document
-  const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri)
-  const configuration = vscode.workspace.getConfiguration('tmGrammarTestTools', document.uri)
+  const workspaceFolder = getEffectiveWorkspaceFolder(document)
+  const configuration = getEffectiveTmGrammarConfiguration(document)
   const autoLoadInstalledGrammars = configuration.get<boolean>('autoLoadInstalledGrammars') ?? true
   const logGrammarDetails = configuration.get<boolean>('logGrammarDetails') ?? false
   const assertionGenerationOptions: AssertionGenerationOptions = {
@@ -35,6 +36,9 @@ export async function loadInsertContext(
   }
   logInfo(`Insert assertions requested for ${document.uri.fsPath}`)
   logInfo(`Workspace folder: ${workspaceFolder?.uri.fsPath ?? '<none>'}`)
+  if (!configuration.usesWorkspaceScopedSettings && vscode.workspace.workspaceFolders?.length) {
+    logInfo('The active file is outside the current workspace; using only global/default tmGrammarTestTools settings.')
+  }
   logInfo(`Target mode: ${targetMode}`)
   logInfo(
     `Render options: scopeMode=${assertionGenerationOptions.scopeMode}, compactRanges=${assertionGenerationOptions.compactRanges}, autoLoadInstalledGrammars=${autoLoadInstalledGrammars}`

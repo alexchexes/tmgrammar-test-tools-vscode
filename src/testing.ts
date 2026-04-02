@@ -10,6 +10,7 @@ import { loadProviderGrammarContributions } from './grammarProvider'
 import { loadInstalledGrammarContributions } from './installedGrammars'
 import { formatDuration, logError, logInfo, logRunBoundary, startStopwatch } from './log'
 import { parseHeaderLine } from './syntaxTest'
+import { getEffectiveTmGrammarConfiguration, getEffectiveWorkspaceFolder } from './settings'
 import { collectTabbedTargetDocumentLines, formatTabOffsetWarning } from './tabWarnings'
 import {
   buildLineOnlyGrammarTestCase,
@@ -348,9 +349,13 @@ async function refreshDocumentTests(
 
 async function loadTestContext(document: vscode.TextDocument): Promise<{ grammars: Array<{ injectTo?: string[]; language?: string; path: string; scopeName: string }> }> {
   const stopwatch = startStopwatch()
-  const configuration = vscode.workspace.getConfiguration('tmGrammarTestTools', document.uri)
+  const configuration = getEffectiveTmGrammarConfiguration(document)
   const autoLoadInstalledGrammars = configuration.get<boolean>('autoLoadInstalledGrammars') ?? true
   const logGrammarDetails = configuration.get<boolean>('logGrammarDetails') ?? false
+  const workspaceFolder = getEffectiveWorkspaceFolder(document)
+  if (!workspaceFolder && !configuration.usesWorkspaceScopedSettings && vscode.workspace.workspaceFolders?.length) {
+    logInfo('The active test file is outside the current workspace; using only global/default tmGrammarTestTools settings.')
+  }
 
   const localConfigStopwatch = startStopwatch()
   const localGrammars = await loadOptionalLocalGrammarContributions(document)

@@ -3,6 +3,7 @@ import { collectAssertionCodeActionSpecs } from './codeActions'
 import { collectLineCodeLensSpecs } from './codeLens'
 import { onDidChangeCodeLenses } from './codeLensController'
 import { SelectionInput } from './selectionTargets'
+import { getEffectiveTmGrammarConfiguration } from './settings'
 import { collectSourceLines, parseHeaderLine, SelectionLineTarget } from './syntaxTest'
 import { registerTestMessageCommands } from './testMessageActions'
 
@@ -13,7 +14,7 @@ export function registerCodeActionsProvider(): vscode.Disposable {
     [{ scheme: 'file' }, { scheme: 'untitled' }],
     {
       provideCodeActions(document, range) {
-        const configuration = vscode.workspace.getConfiguration('tmGrammarTestTools', document.uri)
+        const configuration = getEffectiveTmGrammarConfiguration(document)
         if (!(configuration.get<boolean>('enableCodeActions') ?? true)) {
           return []
         }
@@ -61,7 +62,7 @@ export function registerCodeLensProvider(): vscode.Disposable {
     {
       onDidChangeCodeLenses,
       provideCodeLenses(document) {
-        const configuration = vscode.workspace.getConfiguration('tmGrammarTestTools', document.uri)
+        const configuration = getEffectiveTmGrammarConfiguration(document)
         if (!(configuration.get<boolean>('enableCodeLens') ?? true)) {
           return []
         }

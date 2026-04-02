@@ -3,6 +3,7 @@ import * as vscode from 'vscode'
 import { findGrammarConfigPathForFile, loadGrammarContributionsFromConfig } from './grammarPackage'
 import { GrammarContribution } from './grammarTypes'
 import { resolveProjectRootForFile } from './projectRoots'
+import { getEffectiveTmGrammarConfiguration, getEffectiveWorkspaceFolder } from './settings'
 
 export type { GrammarContribution } from './grammarTypes'
 
@@ -18,9 +19,9 @@ export async function resolveConfigPath(document: vscode.TextDocument): Promise<
 }
 
 export async function tryResolveConfigPath(document: vscode.TextDocument): Promise<string | undefined> {
-  const configuration = vscode.workspace.getConfiguration('tmGrammarTestTools', document.uri)
+  const configuration = getEffectiveTmGrammarConfiguration(document)
   const configuredPath = configuration.get<string>('configPath')?.trim()
-  const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri)
+  const workspaceFolder = getEffectiveWorkspaceFolder(document)
   const relativeBase =
     workspaceFolder?.uri.fsPath ?? (document.uri.scheme === 'file' ? path.dirname(document.uri.fsPath) : undefined)
 
@@ -36,7 +37,7 @@ export async function loadGrammarContributions(configPath: string): Promise<Gram
 }
 
 export async function resolveProjectRoot(document: vscode.TextDocument): Promise<string> {
-  const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri)
+  const workspaceFolder = getEffectiveWorkspaceFolder(document)
   if (workspaceFolder) {
     return workspaceFolder.uri.fsPath
   }
