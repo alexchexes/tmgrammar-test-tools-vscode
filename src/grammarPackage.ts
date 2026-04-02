@@ -26,11 +26,21 @@ export async function findGrammarConfigPathForFile(
   const configuredPath = options.configuredPath?.trim()
 
   if (configuredPath) {
+    if (!path.isAbsolute(configuredPath) && !options.relativeBase) {
+      throw new Error(
+        'Relative tmGrammarTestTools.configPath requires a saved file or a workspace folder to resolve against.'
+      )
+    }
+
     const resolvedPath = path.isAbsolute(configuredPath)
       ? configuredPath
-      : path.resolve(options.relativeBase ?? path.dirname(filePath), configuredPath)
+      : path.resolve(options.relativeBase!, configuredPath)
     await assertGrammarConfig(resolvedPath)
     return resolvedPath
+  }
+
+  if (!path.isAbsolute(filePath)) {
+    return undefined
   }
 
   let currentDirectory = path.dirname(filePath)

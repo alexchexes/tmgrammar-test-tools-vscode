@@ -2,6 +2,10 @@ import { promises as fs } from 'fs'
 import * as path from 'path'
 
 export async function resolveProjectRootForFile(filePath: string): Promise<string> {
+  if (!path.isAbsolute(filePath)) {
+    throw new Error('Expected a saved file path or workspace folder to resolve the project root.')
+  }
+
   let currentDirectory = path.dirname(filePath)
   const fileSystemRoot = path.parse(currentDirectory).root
 

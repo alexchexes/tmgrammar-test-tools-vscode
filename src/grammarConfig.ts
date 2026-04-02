@@ -21,10 +21,12 @@ export async function tryResolveConfigPath(document: vscode.TextDocument): Promi
   const configuration = vscode.workspace.getConfiguration('tmGrammarTestTools', document.uri)
   const configuredPath = configuration.get<string>('configPath')?.trim()
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri)
+  const relativeBase =
+    workspaceFolder?.uri.fsPath ?? (document.uri.scheme === 'file' ? path.dirname(document.uri.fsPath) : undefined)
 
   return findGrammarConfigPathForFile(document.uri.fsPath, {
     configuredPath,
-    relativeBase: workspaceFolder?.uri.fsPath ?? path.dirname(document.uri.fsPath),
+    relativeBase,
     searchRoot: workspaceFolder?.uri.fsPath
   })
 }
@@ -34,5 +36,10 @@ export async function loadGrammarContributions(configPath: string): Promise<Gram
 }
 
 export async function resolveProjectRoot(document: vscode.TextDocument): Promise<string> {
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri)
+  if (workspaceFolder) {
+    return workspaceFolder.uri.fsPath
+  }
+
   return resolveProjectRootForFile(document.uri.fsPath)
 }
