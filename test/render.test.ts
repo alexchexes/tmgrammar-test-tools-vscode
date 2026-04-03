@@ -57,6 +57,43 @@ test('full mode compacts disjoint caret ranges and stays compatible with vscode-
   ])
 })
 
+test('full mode still compacts caret-only ranges when the same scope also needs a left-arrow assertion', () => {
+  const assertionLines = renderAssertionBlock(
+    '#',
+    '0123456789',
+    [token(0, 1, 'scope.a'), token(3, 5, 'scope.a'), token(6, 7, 'scope.a')],
+    {
+      compactRanges: true,
+      scopeMode: 'full',
+      headerScope: 'source.example'
+    }
+  )
+
+  assert.deepEqual(assertionLines, ['# <- scope.a', '#  ^^ ^ scope.a'])
+
+  const parsedAssertions = assertionLines.flatMap((line) => parseScopeAssertion(2, 1, line))
+  assert.deepEqual(parsedAssertions, [
+    {
+      from: 0,
+      to: 1,
+      scopes: ['scope.a'],
+      exclude: []
+    },
+    {
+      from: 3,
+      to: 5,
+      scopes: ['scope.a'],
+      exclude: []
+    },
+    {
+      from: 6,
+      to: 7,
+      scopes: ['scope.a'],
+      exclude: []
+    }
+  ])
+})
+
 test('rendering preserves tabs in caret padding and stays compatible with vscode-tmgrammar-test parsing', () => {
   const assertionLines = renderAssertionBlock('//', 'ab\tcd\tef', [token(5, 7, 'scope.target')], {
     compactRanges: true,
@@ -138,6 +175,21 @@ test('minimal mode factors shared internal prefixes even when the root has sibli
     '#     ^ punctuation.end.string',
     '#      ^ punctuation.terminator'
   ])
+})
+
+test('minimal mode still compacts caret-only ranges when the same emitted scope also needs a left-arrow assertion', () => {
+  const assertionLines = renderAssertionBlock(
+    '#',
+    '0123456789',
+    [token(0, 1, 'scope.a'), token(3, 5, 'scope.a'), token(6, 7, 'scope.a')],
+    {
+      compactRanges: true,
+      scopeMode: 'minimal',
+      headerScope: ''
+    }
+  )
+
+  assert.deepEqual(assertionLines, ['# <- scope.a', '#  ^^ ^ scope.a'])
 })
 
 test('minimal mode with compactRanges disabled interleaves split ranges by marker position', () => {

@@ -297,18 +297,22 @@ function renderAssertionSpec(
   }
 
   const ranges = mergeRanges(spec.ranges)
-  const shouldSplitRanges =
-    !compactRanges || (ranges.length > 1 && ranges.some((range) => range.startIndex < commentToken.length))
-
-  if (shouldSplitRanges) {
+  if (!compactRanges) {
     return ranges.map((range) => renderSingleRangeAssertion(commentToken, sourceLine, range, spec.scopes))
   }
 
-  if (ranges.length === 1) {
-    return [renderSingleRangeAssertion(commentToken, sourceLine, ranges[0], spec.scopes)]
+  const { caretRanges, leftArrowRanges } = partitionRenderableRanges(ranges, commentToken.length)
+  const renderedLines: string[] = leftArrowRanges.map((range) =>
+    renderSingleRangeAssertion(commentToken, sourceLine, range, spec.scopes)
+  )
+
+  if (caretRanges.length === 1) {
+    renderedLines.push(renderSingleRangeAssertion(commentToken, sourceLine, caretRanges[0], spec.scopes))
+  } else if (caretRanges.length > 1) {
+    renderedLines.push(renderMultiRangeCaretAssertion(commentToken, sourceLine, caretRanges, spec.scopes))
   }
 
-  return [renderMultiRangeCaretAssertion(commentToken, sourceLine, ranges, spec.scopes)]
+  return renderedLines
 }
 
 function renderSingleRangeAssertion(
@@ -372,4 +376,26 @@ function mergeRanges(ranges: readonly CaretRange[]): CaretRange[] {
   }
 
   return mergedRanges
+}
+
+function partitionRenderableRanges(
+  ranges: readonly CaretRange[],
+  commentTokenLength: number
+): { caretRanges: CaretRange[]; leftArrowRanges: CaretRange[] } {
+  const caretRanges: CaretRange[] = []
+  const leftArrowRanges: CaretRange[] = []
+
+  for (const range of ranges) {
+    if (range.startIndex < commentTokenLength) {
+      leftArrowRanges.push(range)
+      continue
+    }
+
+    caretRanges.push(range)
+  }
+
+  return {
+    caretRanges,
+    leftArrowRanges
+  }
 }
