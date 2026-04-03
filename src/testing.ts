@@ -12,6 +12,7 @@ import { formatDuration, logError, logInfo, logRunBoundary, startStopwatch } fro
 import { parseHeaderLine } from './syntaxTest'
 import { getEffectiveTmGrammarConfiguration, getEffectiveWorkspaceFolder } from './settings'
 import { collectTabbedTargetDocumentLines, formatTabOffsetWarning } from './tabWarnings'
+import { buildWorkspaceDiscoveryExcludePattern, getWorkspaceTestDiscoveryConfiguration } from './testDiscovery'
 import {
   buildLineOnlyGrammarTestCase,
   collectRunnableSourceLinesFromLines,
@@ -23,9 +24,10 @@ import {
 } from './testingModel'
 import { rememberTestFailureSourceLocation } from './testMessageActions'
 import { parseGrammarTestCaseWithCompat } from './tmgrammarTestCompat'
+import { GrammarContribution } from './grammarTypes'
 
 const { createRegistry } = require('vscode-tmgrammar-test/dist/common/index') as {
-  createRegistry: (grammars: Array<{ injectTo?: string[]; language?: string; path: string; scopeName: string }>) => unknown
+  createRegistry: (grammars: readonly { injectTo?: string[]; language?: string; path: string; scopeName: string }[]) => unknown
 }
 const { parseGrammarTestCase, runGrammarTestCase } = require('vscode-tmgrammar-test/dist/unit/index') as {
   parseGrammarTestCase: (value: string) => GrammarTestCase
@@ -36,13 +38,25 @@ const REFRESH_DEBOUNCE_MS = 120
 const TEST_CONTROLLER_ID = 'tmGrammarTestTools'
 const TEST_CONTROLLER_LABEL = 'TM Grammar Test Tools'
 
+interface TestRunExecutionContext {
+  installedGrammars?: readonly GrammarContribution[]
+  localGrammarLoads: Map<string, Promise<GrammarContribution[]>>
+  providerGrammarLoads: Map<string, Promise<GrammarContribution[]>>
+  registries: Map<string, unknown>
+}
+
 export function registerTestingController(context: vscode.ExtensionContext): vscode.Disposable {
+  void context
   const controller = vscode.tests.createTestController(TEST_CONTROLLER_ID, TEST_CONTROLLER_LABEL)
   const pendingRefreshes = new Map<string, NodeJS.Timeout>()
+  const globDiscoveredFileItemIds = new Set<string>()
   const runnableLineCache = new Map<string, readonly number[]>()
 
-  controller.refreshHandler = async () => {
-    await refreshAllOpenDocuments(controller, runnableLineCache)
+  controller.refreshHandler = async (token) => {
+    await refreshAllTests(controller, runnableLineCache, globDiscoveredFileItemIds, token)
+  }
+  controller.resolveHandler = async (item) => {
+    await resolveTestItem(controller, runnableLineCache, globDiscoveredFileItemIds, item)
   }
 
   const runProfile = controller.createRunProfile(
@@ -63,23 +77,35 @@ export function registerTestingController(context: vscode.ExtensionContext): vsc
     true
   )
 
-  void refreshAllOpenDocuments(controller, runnableLineCache)
+  void refreshAllTests(controller, runnableLineCache, globDiscoveredFileItemIds)
 
   const subscriptions: vscode.Disposable[] = [
     controller,
     runProfile,
     debugProfile,
     vscode.workspace.onDidOpenTextDocument((document) => {
-      scheduleRefresh(controller, pendingRefreshes, runnableLineCache, document)
+      scheduleRefresh(controller, pendingRefreshes, runnableLineCache, globDiscoveredFileItemIds, document)
     }),
     vscode.workspace.onDidChangeTextDocument((event) => {
       maybeInvalidateChangedDocumentTestResults(controller, runnableLineCache, event)
-      scheduleRefresh(controller, pendingRefreshes, runnableLineCache, event.document)
+      scheduleRefresh(controller, pendingRefreshes, runnableLineCache, globDiscoveredFileItemIds, event.document)
     }),
     vscode.workspace.onDidCloseTextDocument((document) => {
       clearPendingRefresh(pendingRefreshes, document.uri.toString())
       runnableLineCache.delete(document.uri.toString())
-      controller.items.delete(getFileTestItemId(document.uri))
+
+      const fileItemId = getFileTestItemId(document.uri)
+      const fileItem = controller.items.get(fileItemId)
+      if (!fileItem) {
+        return
+      }
+
+      if (globDiscoveredFileItemIds.has(fileItemId)) {
+        resetPlaceholderFileItem(controller, fileItem)
+        return
+      }
+
+      controller.items.delete(fileItemId)
     })
   ]
 
@@ -101,6 +127,7 @@ async function runTests(
   cancellationToken: vscode.CancellationToken
 ): Promise<void> {
   const run = controller.createTestRun(request)
+  const executionContext = createTestRunExecutionContext()
 
   try {
     const requestedItems = request.include?.length
@@ -112,7 +139,7 @@ async function runTests(
         break
       }
 
-      await runTestItem(run, testItem, cancellationToken)
+      await runTestItem(run, testItem, cancellationToken, executionContext)
     }
   } finally {
     run.end()
@@ -122,8 +149,10 @@ async function runTests(
 async function runTestItem(
   run: vscode.TestRun,
   testItem: vscode.TestItem,
-  cancellationToken: vscode.CancellationToken
+  cancellationToken: vscode.CancellationToken,
+  executionContext: TestRunExecutionContext
 ): Promise<void> {
+  void cancellationToken
   const target =
     testItem.parent && testItem.uri
       ? {
@@ -166,11 +195,9 @@ async function runTestItem(
             resolveSourceLineNumberForDocumentLine(runnableSourceLines, target.lineNumber ?? -1)
           )
     logTestTabWarning(lines, runnableSourceLines, header.commentToken, target)
-    const testContext = await loadTestContext(document)
+    const testContext = await loadTestContext(document, executionContext)
 
-    const registryStopwatch = startStopwatch()
-    const registry = createRegistry(testContext.grammars)
-    logInfo(`Testing registry created in ${formatDuration(registryStopwatch())}.`)
+    const registry = getOrCreateRegistry(testContext.grammars, executionContext)
 
     const runStopwatch = startStopwatch()
     const failures = await runGrammarTestCase(registry, testCase)
@@ -246,19 +273,105 @@ function reportLineRunResult(
   run.failed(lineItem, renderedFailures.map((failure) => failure.message))
 }
 
-async function refreshAllOpenDocuments(
+async function refreshAllTests(
   controller: vscode.TestController,
-  runnableLineCache: Map<string, readonly number[]>
+  runnableLineCache: Map<string, readonly number[]>,
+  globDiscoveredFileItemIds: Set<string>,
+  token?: vscode.CancellationToken
 ): Promise<void> {
+  await refreshWorkspaceDiscoveredFiles(controller, globDiscoveredFileItemIds, token)
   await Promise.all(
-    vscode.workspace.textDocuments.map((document) => refreshDocumentTests(controller, runnableLineCache, document))
+    vscode.workspace.textDocuments.map((document) =>
+      refreshDocumentTests(controller, runnableLineCache, globDiscoveredFileItemIds, document)
+    )
   )
+}
+
+async function resolveTestItem(
+  controller: vscode.TestController,
+  runnableLineCache: Map<string, readonly number[]>,
+  globDiscoveredFileItemIds: Set<string>,
+  item: vscode.TestItem | undefined
+): Promise<void> {
+  if (!item) {
+    await refreshAllTests(controller, runnableLineCache, globDiscoveredFileItemIds)
+    return
+  }
+
+  if (item.parent || !item.uri || item.uri.scheme !== 'file') {
+    return
+  }
+
+  const existingOpenDocument = vscode.workspace.textDocuments.find(
+    (document) => document.uri.toString() === item.uri!.toString()
+  )
+  const document = existingOpenDocument ?? (await vscode.workspace.openTextDocument(item.uri))
+
+  await refreshDocumentTests(controller, runnableLineCache, globDiscoveredFileItemIds, document)
+}
+
+async function refreshWorkspaceDiscoveredFiles(
+  controller: vscode.TestController,
+  globDiscoveredFileItemIds: Set<string>,
+  token?: vscode.CancellationToken
+): Promise<void> {
+  const discoveredFiles = new Map<string, vscode.Uri>()
+
+  for (const workspaceFolder of vscode.workspace.workspaceFolders ?? []) {
+    const discoveryConfiguration = getWorkspaceTestDiscoveryConfiguration(workspaceFolder)
+    if (discoveryConfiguration.include.length === 0) {
+      continue
+    }
+
+    const excludePattern = buildWorkspaceDiscoveryExcludePattern(
+      workspaceFolder,
+      discoveryConfiguration.exclude
+    )
+    const matches = await Promise.all(
+      discoveryConfiguration.include.map((pattern) =>
+        vscode.workspace.findFiles(new vscode.RelativePattern(workspaceFolder, pattern), excludePattern, undefined, token)
+      )
+    )
+
+    for (const uri of matches.flat()) {
+      if (uri.scheme !== 'file') {
+        continue
+      }
+
+      discoveredFiles.set(getFileTestItemId(uri), uri)
+    }
+  }
+
+  for (const [fileItemId, uri] of discoveredFiles) {
+    globDiscoveredFileItemIds.add(fileItemId)
+    ensurePlaceholderFileItem(controller, uri)
+  }
+
+  for (const fileItemId of Array.from(globDiscoveredFileItemIds)) {
+    if (discoveredFiles.has(fileItemId)) {
+      continue
+    }
+
+    globDiscoveredFileItemIds.delete(fileItemId)
+    const fileItem = controller.items.get(fileItemId)
+    if (!fileItem) {
+      continue
+    }
+
+    const isOpen = vscode.workspace.textDocuments.some((document) => getFileTestItemId(document.uri) === fileItemId)
+    if (isOpen) {
+      continue
+    }
+
+    controller.items.delete(fileItemId)
+  }
 }
 
 function scheduleRefresh(
   controller: vscode.TestController,
   pendingRefreshes: Map<string, NodeJS.Timeout>,
   runnableLineCache: Map<string, readonly number[]>,
+  globDiscoveredFileItemIds: Set<string>,
   document: vscode.TextDocument
 ): void {
   if (!isSupportedTestDocument(document)) {
@@ -271,7 +384,7 @@ function scheduleRefresh(
     documentKey,
     setTimeout(() => {
       pendingRefreshes.delete(documentKey)
-      void refreshDocumentTests(controller, runnableLineCache, document)
+      void refreshDocumentTests(controller, runnableLineCache, globDiscoveredFileItemIds, document)
     }, REFRESH_DEBOUNCE_MS)
   )
 }
@@ -279,6 +392,7 @@ function scheduleRefresh(
 async function refreshDocumentTests(
   controller: vscode.TestController,
   runnableLineCache: Map<string, readonly number[]>,
+  globDiscoveredFileItemIds: Set<string>,
   document: vscode.TextDocument
 ): Promise<void> {
   if (!isSupportedTestDocument(document)) {
@@ -287,15 +401,12 @@ async function refreshDocumentTests(
 
   const documentKey = document.uri.toString()
   const fileItemId = getFileTestItemId(document.uri)
+  const keepPlaceholderFileItem = globDiscoveredFileItemIds.has(fileItemId)
   const existingFileItem = controller.items.get(fileItemId)
 
   if (document.lineCount === 0) {
     runnableLineCache.delete(documentKey)
-    if (existingFileItem) {
-      resetTestResults(controller, [existingFileItem, ...Array.from(existingFileItem.children).map(([, item]) => item)])
-      controller.invalidateTestResults(existingFileItem)
-    }
-    controller.items.delete(fileItemId)
+    handleUnavailableResolvedFileItem(controller, existingFileItem, keepPlaceholderFileItem)
     return
   }
 
@@ -304,11 +415,14 @@ async function refreshDocumentTests(
     header = parseHeaderLine(document.lineAt(0).text)
   } catch {
     runnableLineCache.delete(documentKey)
-    if (existingFileItem) {
-      resetTestResults(controller, [existingFileItem, ...Array.from(existingFileItem.children).map(([, item]) => item)])
-      controller.invalidateTestResults(existingFileItem)
+    if (keepPlaceholderFileItem) {
+      const fileItem = existingFileItem ?? ensurePlaceholderFileItem(controller, document.uri)
+      resetPlaceholderFileItem(controller, fileItem)
+      fileItem.error = 'No valid SYNTAX TEST header found.'
+      fileItem.canResolveChildren = true
+    } else {
+      handleUnavailableResolvedFileItem(controller, existingFileItem, false)
     }
-    controller.items.delete(fileItemId)
     return
   }
 
@@ -316,21 +430,19 @@ async function refreshDocumentTests(
   const runnableSourceLines = collectRunnableSourceLinesFromLines(lines, header.commentToken)
   if (runnableSourceLines.length === 0) {
     runnableLineCache.delete(documentKey)
-    if (existingFileItem) {
-      resetTestResults(controller, [existingFileItem, ...Array.from(existingFileItem.children).map(([, item]) => item)])
-      controller.invalidateTestResults(existingFileItem)
-    }
-    controller.items.delete(fileItemId)
+    handleUnavailableResolvedFileItem(controller, existingFileItem, keepPlaceholderFileItem)
     return
   }
 
   let fileItem = existingFileItem
   if (!fileItem) {
-    fileItem = controller.createTestItem(fileItemId, path.basename(document.uri.fsPath || document.uri.path), document.uri)
-    controller.items.add(fileItem)
+    fileItem = ensurePlaceholderFileItem(controller, document.uri)
   }
 
   runnableLineCache.set(documentKey, runnableSourceLines.map((line) => line.documentLine))
+  fileItem.busy = false
+  fileItem.canResolveChildren = false
+  fileItem.error = undefined
   fileItem.range = new vscode.Range(document.lineAt(0).range.start, document.lineAt(0).range.end)
   fileItem.children.replace(
     runnableSourceLines.map((sourceLine) => {
@@ -347,7 +459,42 @@ async function refreshDocumentTests(
   )
 }
 
-async function loadTestContext(document: vscode.TextDocument): Promise<{ grammars: Array<{ injectTo?: string[]; language?: string; path: string; scopeName: string }> }> {
+function createTestRunExecutionContext(): TestRunExecutionContext {
+  return {
+    localGrammarLoads: new Map(),
+    providerGrammarLoads: new Map(),
+    registries: new Map()
+  }
+}
+
+function getOrCreateRegistry(
+  grammars: readonly { injectTo?: string[]; language?: string; path: string; scopeName: string }[],
+  executionContext: TestRunExecutionContext
+): unknown {
+  const cacheKey = JSON.stringify(
+    grammars.map((grammar) => ({
+      injectTo: grammar.injectTo ?? [],
+      language: grammar.language ?? '',
+      path: grammar.path,
+      scopeName: grammar.scopeName
+    }))
+  )
+  const cachedRegistry = executionContext.registries.get(cacheKey)
+  if (cachedRegistry) {
+    return cachedRegistry
+  }
+
+  const registryStopwatch = startStopwatch()
+  const registry = createRegistry(grammars)
+  executionContext.registries.set(cacheKey, registry)
+  logInfo(`Testing registry created in ${formatDuration(registryStopwatch())}.`)
+  return registry
+}
+
+async function loadTestContext(
+  document: vscode.TextDocument,
+  executionContext: TestRunExecutionContext
+): Promise<{ grammars: Array<{ injectTo?: string[]; language?: string; path: string; scopeName: string }> }> {
   const stopwatch = startStopwatch()
   const configuration = getEffectiveTmGrammarConfiguration(document)
   const autoLoadInstalledGrammars = configuration.get<boolean>('autoLoadInstalledGrammars') ?? true
@@ -358,15 +505,21 @@ async function loadTestContext(document: vscode.TextDocument): Promise<{ grammar
   }
 
   const localConfigStopwatch = startStopwatch()
-  const localGrammars = await loadOptionalLocalGrammarContributions(document)
+  const localGrammars = await loadOptionalLocalGrammarContributions(document, executionContext)
   if (localGrammars.length > 0) {
     logInfo(`Testing loaded local grammar config in ${formatDuration(localConfigStopwatch())}.`)
   }
 
   const header = parseHeaderLine(document.lineAt(0).text)
-  const providerGrammars = await loadProviderGrammarContributions(document, header.scopeName)
+  const providerGrammars = await loadProviderGrammarContributions(
+    document,
+    header.scopeName,
+    executionContext.providerGrammarLoads
+  )
   const installedGrammarStopwatch = startStopwatch()
-  const installedGrammars = autoLoadInstalledGrammars ? loadInstalledGrammarContributions() : []
+  const installedGrammars = autoLoadInstalledGrammars
+    ? (executionContext.installedGrammars ??= loadInstalledGrammarContributions())
+    : []
   const grammarSources = buildGrammarSourceSet(
     installedGrammars,
     localGrammars,
@@ -398,7 +551,10 @@ async function loadTestContext(document: vscode.TextDocument): Promise<{ grammar
   }
 }
 
-async function loadOptionalLocalGrammarContributions(document: vscode.TextDocument) {
+async function loadOptionalLocalGrammarContributions(
+  document: vscode.TextDocument,
+  executionContext: TestRunExecutionContext
+) {
   const configPath = await tryResolveConfigPath(document)
   if (!configPath) {
     logInfo('No local package.json grammar config found for the test target document.')
@@ -406,7 +562,11 @@ async function loadOptionalLocalGrammarContributions(document: vscode.TextDocume
   }
 
   logInfo(`Using local grammar config for testing: ${configPath}`)
-  return loadGrammarContributions(configPath)
+
+  const cachedLoad =
+    executionContext.localGrammarLoads.get(configPath) ?? loadGrammarContributions(configPath)
+  executionContext.localGrammarLoads.set(configPath, cachedLoad)
+  return cachedLoad
 }
 
 function renderTestFailure(
@@ -508,6 +668,52 @@ function getFileTestItemId(uri: vscode.Uri): string {
 
 function getLineTestItemId(uri: vscode.Uri, documentLine: number): string {
   return `line:${uri.toString()}:${documentLine}`
+}
+
+function ensurePlaceholderFileItem(controller: vscode.TestController, uri: vscode.Uri): vscode.TestItem {
+  const fileItemId = getFileTestItemId(uri)
+  const existingFileItem = controller.items.get(fileItemId)
+  if (existingFileItem) {
+    return existingFileItem
+  }
+
+  const fileItem = controller.createTestItem(fileItemId, path.basename(uri.fsPath || uri.path), uri)
+  fileItem.canResolveChildren = true
+  controller.items.add(fileItem)
+  return fileItem
+}
+
+function handleUnavailableResolvedFileItem(
+  controller: vscode.TestController,
+  fileItem: vscode.TestItem | undefined,
+  keepPlaceholderFileItem: boolean
+): void {
+  if (!fileItem) {
+    return
+  }
+
+  if (keepPlaceholderFileItem) {
+    resetPlaceholderFileItem(controller, fileItem)
+    return
+  }
+
+  resetTestResults(controller, [fileItem, ...Array.from(fileItem.children).map(([, item]) => item)])
+  controller.invalidateTestResults(fileItem)
+  controller.items.delete(fileItem.id)
+}
+
+function resetPlaceholderFileItem(controller: vscode.TestController, fileItem: vscode.TestItem): void {
+  const childItems = Array.from(fileItem.children).map(([, item]) => item)
+  if (childItems.length > 0) {
+    resetTestResults(controller, [fileItem, ...childItems])
+    controller.invalidateTestResults(fileItem)
+  }
+
+  fileItem.busy = false
+  fileItem.canResolveChildren = true
+  fileItem.error = undefined
+  fileItem.range = undefined
+  fileItem.children.replace([])
 }
 
 function clearPendingRefresh(pendingRefreshes: Map<string, NodeJS.Timeout>, documentKey: string): void {

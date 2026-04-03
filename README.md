@@ -152,6 +152,7 @@ Code Actions and CodeLens expose the safe `Insert` commands. The potentially des
 - `tmGrammarTestTools.enableCodeLens` defaults to `true` and adds line-oriented CodeLens commands above non-empty source lines.
 - `tmGrammarTestTools.configPath` points to the grammar package `package.json` when the nearest one is not the right source for the current syntax test.
 - `tmGrammarTestTools.grammarProvider.*` controls optional external grammar loading. See [Grammar Provider](#grammar-provider).
+- `tmGrammarTestTools.testDiscovery.include` / `exclude` optionally add workspace files to the Testing view by glob. Matching files are treated as candidate syntax tests and validated lazily when expanded or run, so use reasonably narrow patterns.
 
 - _Debugging_: `tmGrammarTestTools.logGrammarDetails` defaults to `false` and, when enabled, logs detailed grammar selection info in the Output panel. Assertion generation logs the actually used grammar scopes with source labels; test runs log the merged grammar load order.
 
@@ -160,7 +161,8 @@ Code Actions and CodeLens expose the safe `Insert` commands. The potentially des
 The extension integrates with VS Code’s native Testing UI.
 
 - Open syntax test files are discovered in the Testing view.
-- The extension creates one test item per open syntax test file and one child item per source line that has an assertion block.
+- `tmGrammarTestTools.testDiscovery.include` can also add candidate syntax test files across the workspace. Those file items are validated lazily when expanded or run.
+- The extension creates one file item per discovered syntax test and one child item per source line that has an assertion block.
 - You can run a whole file or a single asserted source line from the Testing view or gutter.
 - Test execution uses the real `vscode-tmgrammar-test` runner bundled with the extension.
 - Test runs use the current editor text, **including unsaved edits**, but VS Code may still save the file before running tests unless `testing.saveBeforeTest` is disabled in your settings.json.

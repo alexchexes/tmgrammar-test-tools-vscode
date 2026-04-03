@@ -204,6 +204,24 @@
           "default": false,
           "scope": "resource",
           "description": "When enabled, log detailed grammar selection info in the Output panel. Assertion generation logs the actually used grammar scopes with source labels; test runs log the merged grammar load order."
+        },
+        "tmGrammarTestTools.testDiscovery.include": {
+          "type": "array",
+          "default": [],
+          "scope": "resource",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional glob patterns for additional syntax test file discovery in the Testing view. Matching files appear as candidate file items and are validated lazily when expanded or run, so prefer narrow patterns."
+        },
+        "tmGrammarTestTools.testDiscovery.exclude": {
+          "type": "array",
+          "default": [],
+          "scope": "resource",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional glob patterns excluded from tmGrammarTestTools.testDiscovery.include."
         }
       }
     }

@@ -32,6 +32,20 @@ export function resolveProviderCwdTemplate(
   }, 'Grammar provider cwd')
 }
 
+export function buildProviderLoadCacheKey(
+  resolvedCommand: string,
+  resolvedCwd: string,
+  targetScopeName: string,
+  timeoutMs: number
+): string {
+  return JSON.stringify({
+    command: resolvedCommand,
+    cwd: resolvedCwd,
+    targetScopeName,
+    timeoutMs
+  })
+}
+
 function replaceTemplateTokens(
   template: string,
   context: ProviderTemplateContext,

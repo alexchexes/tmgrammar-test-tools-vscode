@@ -3,13 +3,19 @@ import { resolveProjectRoot } from './grammarConfig'
 import { GrammarContribution } from './grammarTypes'
 import { formatDuration, logInfo, startStopwatch } from './log'
 import { normalizeConfiguredProviderScopes, shouldRunProviderForScope } from './providerScopeFilter'
-import { ProviderTemplateContext, resolveCommandTemplate, resolveProviderCwdTemplate } from './providerTemplates'
+import {
+  buildProviderLoadCacheKey,
+  ProviderTemplateContext,
+  resolveCommandTemplate,
+  resolveProviderCwdTemplate
+} from './providerTemplates'
 import { runGrammarProvider } from './providerRunner'
 import { getEffectiveTmGrammarConfiguration, getEffectiveWorkspaceFolder } from './settings'
 
 export async function loadProviderGrammarContributions(
   document: vscode.TextDocument,
-  targetScopeName: string
+  targetScopeName: string,
+  cache?: Map<string, Promise<GrammarContribution[]>>
 ): Promise<GrammarContribution[]> {
   const stopwatch = startStopwatch()
   const configuration = getEffectiveTmGrammarConfiguration(document)
@@ -32,16 +38,25 @@ export async function loadProviderGrammarContributions(
   const configuredCwd = configuration.get<string>('grammarProvider.cwd')?.trim()
   const timeoutMs = configuration.get<number>('grammarProvider.timeoutMs') ?? 30000
   const context = toProviderTemplateContext(document, projectRoot)
+  const resolvedCommand = resolveCommandTemplate(configuredCommand, context)
+  const resolvedCwd = resolveProviderCwdTemplate(context, configuredCwd)
+  const cacheKey = buildProviderLoadCacheKey(resolvedCommand, resolvedCwd, targetScopeName, timeoutMs)
 
   logInfo(`Resolved project root: ${projectRoot}`)
-  logInfo(`Running grammar provider command: ${resolveCommandTemplate(configuredCommand, context)}`)
-  logInfo(`Grammar provider cwd: ${resolveProviderCwdTemplate(context, configuredCwd)}`)
+  logInfo(`Running grammar provider command: ${resolvedCommand}`)
+  logInfo(`Grammar provider cwd: ${resolvedCwd}`)
 
-  const grammars = await runGrammarProvider(context, {
-    command: configuredCommand,
-    cwd: configuredCwd,
-    timeoutMs
-  })
+  const loadPromise =
+    cache?.get(cacheKey) ??
+    runGrammarProvider(context, {
+      command: configuredCommand,
+      cwd: configuredCwd,
+      timeoutMs
+    })
+
+  cache?.set(cacheKey, loadPromise)
+
+  const grammars = await loadPromise
 
   logInfo(
     `Grammar provider returned ${grammars.length} grammar path(s): ${grammars
