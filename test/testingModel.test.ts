@@ -2,6 +2,7 @@ import * as assert from 'node:assert/strict'
 import * as path from 'node:path'
 import { test } from 'node:test'
 import {
+  buildTargetedGrammarTestCaseText,
   buildLineOnlyGrammarTestCase,
   collectRunnableSourceLinesFromLines,
   GrammarTestCase,
@@ -61,6 +62,37 @@ test('buildLineOnlyGrammarTestCase keeps only the requested source line assertio
     metadata: testCase.metadata,
     source: ['alpha()', 'beta()', 'gamma()']
   })
+})
+
+test('buildTargetedGrammarTestCaseText keeps source context up to the target line and only the target assertion block', () => {
+  const lines = [
+    '// SYNTAX TEST "source.example"',
+    '',
+    'alpha()',
+    '// ^^^^^ source.example alpha',
+    'beta()',
+    '// ^^^^ source.example beta',
+    'gamma()',
+    '// <---- source.example gamma'
+  ]
+
+  assert.deepEqual(buildTargetedGrammarTestCaseText(lines, '//', 6), {
+    lineNumberMap: [1, 2, 3, 5, 7, 8],
+    sourceLineNumber: 3,
+    text: ['// SYNTAX TEST "source.example"', '', 'alpha()', 'beta()', 'gamma()', '// <---- source.example gamma'].join(
+      '\n'
+    )
+  })
+})
+
+test('buildTargetedGrammarTestCaseText returns undefined when the target line is not a source line', () => {
+  const lines = [
+    '// SYNTAX TEST "source.example"',
+    'alpha()',
+    '// ^^^^^ source.example alpha'
+  ]
+
+  assert.equal(buildTargetedGrammarTestCaseText(lines, '//', 2), undefined)
 })
 
 test('resolveFailureAssertionRange prefers the narrowest overlapping assertion range', () => {

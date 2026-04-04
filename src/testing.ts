@@ -14,7 +14,7 @@ import { getEffectiveTmGrammarConfiguration, getEffectiveWorkspaceFolder } from 
 import { collectTabbedTargetDocumentLines, formatTabOffsetWarning } from './tabWarnings'
 import { buildWorkspaceDiscoveryExcludePattern, getWorkspaceTestDiscoveryConfiguration } from './testDiscovery'
 import {
-  buildLineOnlyGrammarTestCase,
+  buildTargetedGrammarTestCaseText,
   collectRunnableSourceLinesFromLines,
   GrammarTestCase,
   GrammarTestFailure,
@@ -32,6 +32,9 @@ const { createRegistry } = require('vscode-tmgrammar-test/dist/common/index') as
 const { parseGrammarTestCase, runGrammarTestCase } = require('vscode-tmgrammar-test/dist/unit/index') as {
   parseGrammarTestCase: (value: string) => GrammarTestCase
   runGrammarTestCase: (registry: unknown, testCase: GrammarTestCase) => Promise<TestFailure[]>
+}
+const { parseScopeAssertion } = require('vscode-tmgrammar-test/dist/unit/parsing') as {
+  parseScopeAssertion: (testCaseLineNumber: number, commentLength: number, assertionLine: string) => unknown[]
 }
 
 const REFRESH_DEBOUNCE_MS = 120
@@ -139,7 +142,7 @@ async function runTests(
         break
       }
 
-      await runTestItem(run, testItem, cancellationToken, executionContext)
+      await runTestItem(controller, run, testItem, cancellationToken, executionContext)
     }
   } finally {
     run.end()
@@ -147,6 +150,7 @@ async function runTests(
 }
 
 async function runTestItem(
+  controller: vscode.TestController,
   run: vscode.TestRun,
   testItem: vscode.TestItem,
   cancellationToken: vscode.CancellationToken,
@@ -182,32 +186,49 @@ async function runTestItem(
   try {
     const document = await vscode.workspace.openTextDocument(target.uri)
     const text = document.getText()
-    const parsedTestCase = parseGrammarTestCaseWithCompat(text, parseGrammarTestCase)
     const header = parseHeaderLine(document.lineCount > 0 ? document.lineAt(0).text : '')
     const lines = splitIntoLines(text)
     const runnableSourceLines = collectRunnableSourceLinesFromLines(lines, header.commentToken)
-
-    const testCase =
-      target.kind === 'file'
-        ? parsedTestCase
-        : buildLineOnlyGrammarTestCase(
-            parsedTestCase,
-            resolveSourceLineNumberForDocumentLine(runnableSourceLines, target.lineNumber ?? -1)
-          )
     logTestTabWarning(lines, runnableSourceLines, header.commentToken, target)
     const testContext = await loadTestContext(document, executionContext)
 
     const registry = getOrCreateRegistry(testContext.grammars, executionContext)
 
-    const runStopwatch = startStopwatch()
-    const failures = await runGrammarTestCase(registry, testCase)
-    logInfo(`Assertion test execution completed in ${formatDuration(runStopwatch())}.`)
-    const renderedFailures = failures.map((failure) => renderTestFailure(failure, testCase, runnableSourceLines, document))
-
     if (target.kind === 'file') {
+      syncFileItemChildren(controller, testItem, document, runnableSourceLines)
+      const parsedTestCase = parseGrammarTestCaseWithCompat(
+        text,
+        parseGrammarTestCase,
+        parseScopeAssertion
+      )
+      const runStopwatch = startStopwatch()
+      const failures = await runGrammarTestCase(registry, parsedTestCase)
+      logInfo(`Assertion test execution completed in ${formatDuration(runStopwatch())}.`)
+      const renderedFailures = failures.map((failure) => renderTestFailure(failure, parsedTestCase, runnableSourceLines, document))
       reportFileRunResult(run, testItem, renderedFailures, runnableSourceLines)
       appendTestRunOutput(run, testItem, label, renderedFailures)
     } else {
+      const targetedTestCaseText = buildTargetedGrammarTestCaseText(
+        lines,
+        header.commentToken,
+        target.lineNumber ?? -1
+      )
+      if (!targetedTestCaseText) {
+        throw new Error(`Could not resolve a runnable test block for document line ${(target.lineNumber ?? 0) + 1}.`)
+      }
+
+      const parsedTestCase = parseGrammarTestCaseWithCompat(
+        targetedTestCaseText.text,
+        parseGrammarTestCase,
+        parseScopeAssertion,
+        targetedTestCaseText.lineNumberMap
+      )
+      const runStopwatch = startStopwatch()
+      const failures = await runGrammarTestCase(registry, parsedTestCase)
+      logInfo(`Assertion test execution completed in ${formatDuration(runStopwatch())}.`)
+      const renderedFailures = failures.map((failure) =>
+        renderTestFailure(failure, parsedTestCase, runnableSourceLines, document)
+      )
       reportLineRunResult(run, testItem, renderedFailures)
       appendTestRunOutput(run, testItem, label, renderedFailures)
     }
@@ -444,19 +465,7 @@ async function refreshDocumentTests(
   fileItem.canResolveChildren = false
   fileItem.error = undefined
   fileItem.range = new vscode.Range(document.lineAt(0).range.start, document.lineAt(0).range.end)
-  fileItem.children.replace(
-    runnableSourceLines.map((sourceLine) => {
-      const lineNumber = sourceLine.documentLine + 1
-      const lineItem = controller.createTestItem(
-        getLineTestItemId(document.uri, sourceLine.documentLine),
-        `Line ${lineNumber}`,
-        document.uri
-      )
-      lineItem.description = sourceLine.text.trim()
-      lineItem.range = document.lineAt(sourceLine.documentLine).range
-      return lineItem
-    })
-  )
+  syncFileItemChildren(controller, fileItem, document, runnableSourceLines)
 }
 
 function createTestRunExecutionContext(): TestRunExecutionContext {
@@ -647,7 +656,9 @@ function appendTestRunOutput(
 }
 
 function toOutputBlock(lines: readonly string[]): string {
-  return `${lines.join('\r\n')}\r\n`
+  // vscode.TestRun.appendOutput requires CRLF.
+  const normalizedLines = lines.map((line) => line.replace(/\r?\n/g, '\r\n'))
+  return `${normalizedLines.join('\r\n')}\r\n`
 }
 
 function resolveSourceLineNumberForDocumentLine(
@@ -681,6 +692,27 @@ function ensurePlaceholderFileItem(controller: vscode.TestController, uri: vscod
   fileItem.canResolveChildren = true
   controller.items.add(fileItem)
   return fileItem
+}
+
+function syncFileItemChildren(
+  controller: vscode.TestController,
+  fileItem: vscode.TestItem,
+  document: vscode.TextDocument,
+  runnableSourceLines: readonly RunnableSourceLine[]
+): void {
+  fileItem.children.replace(
+    runnableSourceLines.map((sourceLine) => {
+      const lineNumber = sourceLine.documentLine + 1
+      const lineItem = controller.createTestItem(
+        getLineTestItemId(document.uri, sourceLine.documentLine),
+        `Line ${lineNumber}`,
+        document.uri
+      )
+      lineItem.description = sourceLine.text.trim()
+      lineItem.range = document.lineAt(sourceLine.documentLine).range
+      return lineItem
+    })
+  )
 }
 
 function handleUnavailableResolvedFileItem(

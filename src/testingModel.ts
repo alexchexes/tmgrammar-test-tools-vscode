@@ -4,6 +4,12 @@ export interface RunnableSourceLine {
   text: string
 }
 
+export interface TargetedGrammarTestCaseText {
+  lineNumberMap: readonly number[]
+  sourceLineNumber: number
+  text: string
+}
+
 export interface GrammarTestCaseMetadata {
   commentToken: string
   description: string
@@ -78,6 +84,56 @@ export function buildLineOnlyGrammarTestCase(
     assertions: testCase.assertions.filter((assertion) => assertion.sourceLineNumber === sourceLineNumber),
     metadata: testCase.metadata,
     source: testCase.source.slice(0, sourceLineNumber + 1)
+  }
+}
+
+export function buildTargetedGrammarTestCaseText(
+  lines: readonly string[],
+  commentToken: string,
+  targetSourceDocumentLine: number
+): TargetedGrammarTestCaseText | undefined {
+  if (lines.length === 0 || targetSourceDocumentLine <= 0 || targetSourceDocumentLine >= lines.length) {
+    return undefined
+  }
+
+  const targetedLines = [lines[0]]
+  const lineNumberMap = [1]
+  let sourceLineNumber = -1
+  let foundTargetSourceLine = false
+
+  for (let lineNumber = 1; lineNumber <= targetSourceDocumentLine; lineNumber++) {
+    const line = lines[lineNumber]
+    if (isAssertionLine(line, commentToken)) {
+      continue
+    }
+
+    targetedLines.push(line)
+    lineNumberMap.push(lineNumber + 1)
+    sourceLineNumber++
+
+    if (lineNumber === targetSourceDocumentLine) {
+      foundTargetSourceLine = true
+    }
+  }
+
+  if (!foundTargetSourceLine) {
+    return undefined
+  }
+
+  for (let lineNumber = targetSourceDocumentLine + 1; lineNumber < lines.length; lineNumber++) {
+    const line = lines[lineNumber]
+    if (!isAssertionLine(line, commentToken)) {
+      break
+    }
+
+    targetedLines.push(line)
+    lineNumberMap.push(lineNumber + 1)
+  }
+
+  return {
+    lineNumberMap,
+    sourceLineNumber,
+    text: targetedLines.join('\n')
   }
 }
 
