@@ -9,6 +9,8 @@ import {
 import { loadProviderGrammarContributions } from './grammarProvider'
 import { loadInstalledGrammarContributions } from './installedGrammars'
 import { formatDuration, logError, logInfo, logRunBoundary, startStopwatch } from './log'
+import { getLegacyBundledRunner } from './runners/legacyBundledRunner'
+import { GrammarTestRegistry, GrammarTestRunner } from './runners/types'
 import { parseHeaderLine } from './syntaxTest'
 import { getEffectiveTmGrammarConfiguration, getEffectiveWorkspaceFolder } from './settings'
 import { collectTabbedTargetDocumentLines, formatTabOffsetWarning } from './tabWarnings'
@@ -23,22 +25,7 @@ import {
   resolveFailureAssertionRange
 } from './testingModel'
 import { rememberTestFailureSourceLocation } from './testMessageActions'
-import { parseGrammarTestCaseWithCompat } from './tmgrammarTestCompat'
 import { GrammarContribution } from './grammarTypes'
-
-type VscodeTmgrammarTestCommonApi = {
-  createRegistry: (grammars: readonly { injectTo?: string[]; language?: string; path: string; scopeName: string }[]) => unknown
-}
-type VscodeTmgrammarTestUnitApi = {
-  parseGrammarTestCase: (value: string) => GrammarTestCase
-  runGrammarTestCase: (registry: unknown, testCase: GrammarTestCase) => Promise<TestFailure[]>
-}
-type VscodeTmgrammarTestParsingApi = {
-  parseScopeAssertion: (testCaseLineNumber: number, commentLength: number, assertionLine: string) => unknown[]
-}
-type VscodeTmgrammarTestRuntime = VscodeTmgrammarTestCommonApi & VscodeTmgrammarTestUnitApi & VscodeTmgrammarTestParsingApi
-
-let vscodeTmgrammarTestRuntime: VscodeTmgrammarTestRuntime | undefined
 
 const REFRESH_DEBOUNCE_MS = 120
 const TEST_CONTROLLER_ID = 'tmGrammarTestTools'
@@ -48,7 +35,7 @@ interface TestRunExecutionContext {
   installedGrammars?: readonly GrammarContribution[]
   localGrammarLoads: Map<string, Promise<GrammarContribution[]>>
   providerGrammarLoads: Map<string, Promise<GrammarContribution[]>>
-  registries: Map<string, unknown>
+  registries: Map<string, GrammarTestRegistry>
 }
 
 export function registerTestingController(context: vscode.ExtensionContext): vscode.Disposable {
@@ -127,25 +114,6 @@ export function registerTestingController(context: vscode.ExtensionContext): vsc
   })
 }
 
-function getVscodeTmgrammarTestRuntime(): VscodeTmgrammarTestRuntime {
-  if (vscodeTmgrammarTestRuntime) {
-    return vscodeTmgrammarTestRuntime
-  }
-
-  const { createRegistry } = require('vscode-tmgrammar-test/dist/common/index') as VscodeTmgrammarTestCommonApi
-  const { parseGrammarTestCase, runGrammarTestCase } = require('vscode-tmgrammar-test/dist/unit/index') as VscodeTmgrammarTestUnitApi
-  const { parseScopeAssertion } = require('vscode-tmgrammar-test/dist/unit/parsing') as VscodeTmgrammarTestParsingApi
-
-  vscodeTmgrammarTestRuntime = {
-    createRegistry,
-    parseGrammarTestCase,
-    parseScopeAssertion,
-    runGrammarTestCase
-  }
-
-  return vscodeTmgrammarTestRuntime
-}
-
 async function runTests(
   controller: vscode.TestController,
   request: vscode.TestRunRequest,
@@ -218,18 +186,14 @@ async function runTestItem(
     logTestTabWarning(lines, runnableSourceLines, header.commentToken, target)
     const testContext = await loadTestContext(document, executionContext)
 
-    const runner = getVscodeTmgrammarTestRuntime()
-    const registry = getOrCreateRegistry(testContext.grammars, executionContext)
+    const runner = getLegacyBundledRunner()
+    const registry = getOrCreateRegistry(runner, testContext.grammars, executionContext)
 
     if (target.kind === 'file') {
       syncFileItemChildren(controller, testItem, document, runnableSourceLines)
-      const parsedTestCase = parseGrammarTestCaseWithCompat(
-        text,
-        runner.parseGrammarTestCase,
-        runner.parseScopeAssertion
-      )
+      const parsedTestCase = runner.parseTestCase(text)
       const runStopwatch = startStopwatch()
-      const failures = await runner.runGrammarTestCase(registry, parsedTestCase)
+      const failures = await runner.runTestCase(registry, parsedTestCase)
       logInfo(`Assertion test execution completed in ${formatDuration(runStopwatch())}.`)
       const renderedFailures = failures.map((failure) => renderTestFailure(failure, parsedTestCase, runnableSourceLines, document))
       reportFileRunResult(run, testItem, renderedFailures, runnableSourceLines)
@@ -244,14 +208,9 @@ async function runTestItem(
         throw new Error(`Could not resolve a runnable test block for document line ${(target.lineNumber ?? 0) + 1}.`)
       }
 
-      const parsedTestCase = parseGrammarTestCaseWithCompat(
-        targetedTestCaseText.text,
-        runner.parseGrammarTestCase,
-        runner.parseScopeAssertion,
-        targetedTestCaseText.lineNumberMap
-      )
+      const parsedTestCase = runner.parseTestCase(targetedTestCaseText.text, targetedTestCaseText.lineNumberMap)
       const runStopwatch = startStopwatch()
-      const failures = await runner.runGrammarTestCase(registry, parsedTestCase)
+      const failures = await runner.runTestCase(registry, parsedTestCase)
       logInfo(`Assertion test execution completed in ${formatDuration(runStopwatch())}.`)
       const renderedFailures = failures.map((failure) =>
         renderTestFailure(failure, parsedTestCase, runnableSourceLines, document)
@@ -504,9 +463,10 @@ function createTestRunExecutionContext(): TestRunExecutionContext {
 }
 
 function getOrCreateRegistry(
-  grammars: readonly { injectTo?: string[]; language?: string; path: string; scopeName: string }[],
+  runner: GrammarTestRunner,
+  grammars: readonly GrammarContribution[],
   executionContext: TestRunExecutionContext
-): unknown {
+): GrammarTestRegistry {
   const cacheKey = JSON.stringify(
     grammars.map((grammar) => ({
       injectTo: grammar.injectTo ?? [],
@@ -521,7 +481,7 @@ function getOrCreateRegistry(
   }
 
   const registryStopwatch = startStopwatch()
-  const registry = getVscodeTmgrammarTestRuntime().createRegistry(grammars)
+  const registry = runner.createRegistry(grammars)
   executionContext.registries.set(cacheKey, registry)
   logInfo(`Testing registry created in ${formatDuration(registryStopwatch())}.`)
   return registry
@@ -606,7 +566,7 @@ async function loadOptionalLocalGrammarContributions(
 }
 
 function renderTestFailure(
-  failure: TestFailure,
+  failure: GrammarTestFailure,
   testCase: GrammarTestCase,
   runnableSourceLines: readonly RunnableSourceLine[],
   document: vscode.TextDocument
@@ -924,10 +884,8 @@ function logDetailedGrammarSourceEntries(entries: readonly SourcedGrammarContrib
   }
 }
 
-type TestFailure = GrammarTestFailure
-
 interface RenderedTestFailure {
-  failure: TestFailure
+  failure: GrammarTestFailure
   message: vscode.TestMessage
   outputSummary: string
 }
