@@ -177,10 +177,14 @@ async function runTestItem(
 
   const label =
     target.kind === 'file'
-      ? `test file ${path.basename(target.uri.fsPath || target.uri.toString())}`
-      : `test line ${target.lineNumber! + 1} in ${path.basename(target.uri.fsPath || target.uri.toString())}`
+      ? `test file ${getTestRunLabelPath(target.uri)}`
+      : `test line ${target.lineNumber! + 1} in ${getTestRunLabelPath(target.uri)}`
   const stopwatch = startStopwatch()
-  logRunBoundary(label, 'start')
+  logRunBoundary(label, 'start', true)
+  logInfo(`Target file: ${getAbsoluteLogTargetPath(target.uri)}`)
+  if (target.kind === 'line') {
+    logInfo(`Target line: ${target.lineNumber! + 1}`)
+  }
   run.started(testItem)
 
   try {
@@ -240,7 +244,7 @@ async function runTestItem(
     run.appendOutput(toOutputBlock([`ERROR ${label}`, message]), undefined, testItem)
     logError(`${message}\nTest run failed after ${formatDuration(stopwatch())}: ${label}`)
   } finally {
-    logRunBoundary(label, 'end')
+    logRunBoundary(label, 'end', true)
   }
 }
 
@@ -679,6 +683,33 @@ function getFileTestItemId(uri: vscode.Uri): string {
 
 function getLineTestItemId(uri: vscode.Uri, documentLine: number): string {
   return `line:${uri.toString()}:${documentLine}`
+}
+
+function getTestRunLabelPath(uri: vscode.Uri): string {
+  if (uri.scheme !== 'file') {
+    return path.basename(uri.path || uri.toString())
+  }
+
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri)
+  if (!workspaceFolder) {
+    return path.basename(uri.fsPath)
+  }
+
+  const relativePath = path.relative(workspaceFolder.uri.fsPath, uri.fsPath)
+  const normalizedRelativePath = relativePath.replace(/\\/g, '/')
+  if (normalizedRelativePath.length === 0) {
+    return path.basename(uri.fsPath)
+  }
+
+  if ((vscode.workspace.workspaceFolders?.length ?? 0) > 1) {
+    return `${workspaceFolder.name}/${normalizedRelativePath}`
+  }
+
+  return normalizedRelativePath
+}
+
+function getAbsoluteLogTargetPath(uri: vscode.Uri): string {
+  return uri.scheme === 'file' ? uri.fsPath : uri.toString()
 }
 
 function ensurePlaceholderFileItem(controller: vscode.TestController, uri: vscode.Uri): vscode.TestItem {

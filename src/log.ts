@@ -20,9 +20,14 @@ export function revealLogs(): void {
   outputChannel?.show(true)
 }
 
-export function logRunBoundary(label: string, phase: 'start' | 'end'): void {
+export function logRunBoundary(label: string, phase: 'start' | 'end', compact = false): void {
   const divider = phase === 'start' ? '=' : '-'
   outputChannel?.appendLine('')
+  if (compact) {
+    outputChannel?.appendLine(`[info] ${divider.repeat(3)} ${phase.toUpperCase()}: ${label}`)
+    return
+  }
+
   outputChannel?.appendLine(`[info] ${divider.repeat(12)} ${phase.toUpperCase()}: ${label} ${divider.repeat(12)}`)
 }
 
