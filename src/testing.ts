@@ -9,8 +9,8 @@ import {
 import { loadProviderGrammarContributions } from './grammarProvider'
 import { loadInstalledGrammarContributions } from './installedGrammars'
 import { formatDuration, logError, logInfo, logRunBoundary, startStopwatch } from './log'
-import { getLegacyBundledRunner } from './runners/legacyBundledRunner'
-import { GrammarTestRegistry, GrammarTestRunner } from './runners/types'
+import { resolveGrammarTestRunner } from './runners/resolveRunner'
+import { GrammarTestRegistry, ResolvedGrammarTestRunner } from './runners/types'
 import { parseHeaderLine } from './syntaxTest'
 import { getEffectiveTmGrammarConfiguration, getEffectiveWorkspaceFolder } from './settings'
 import { collectTabbedTargetDocumentLines, formatTabOffsetWarning } from './tabWarnings'
@@ -186,14 +186,14 @@ async function runTestItem(
     logTestTabWarning(lines, runnableSourceLines, header.commentToken, target)
     const testContext = await loadTestContext(document, executionContext)
 
-    const runner = getLegacyBundledRunner()
-    const registry = getOrCreateRegistry(runner, testContext.grammars, executionContext)
+    const resolvedRunner = resolveGrammarTestRunner(document)
+    const registry = getOrCreateRegistry(resolvedRunner, testContext.grammars, executionContext)
 
     if (target.kind === 'file') {
       syncFileItemChildren(controller, testItem, document, runnableSourceLines)
-      const parsedTestCase = runner.parseTestCase(text)
+      const parsedTestCase = resolvedRunner.runner.parseTestCase(text)
       const runStopwatch = startStopwatch()
-      const failures = await runner.runTestCase(registry, parsedTestCase)
+      const failures = await resolvedRunner.runner.runTestCase(registry, parsedTestCase)
       logInfo(`Assertion test execution completed in ${formatDuration(runStopwatch())}.`)
       const renderedFailures = failures.map((failure) => renderTestFailure(failure, parsedTestCase, runnableSourceLines, document))
       reportFileRunResult(run, testItem, renderedFailures, runnableSourceLines)
@@ -208,9 +208,12 @@ async function runTestItem(
         throw new Error(`Could not resolve a runnable test block for document line ${(target.lineNumber ?? 0) + 1}.`)
       }
 
-      const parsedTestCase = runner.parseTestCase(targetedTestCaseText.text, targetedTestCaseText.lineNumberMap)
+      const parsedTestCase = resolvedRunner.runner.parseTestCase(
+        targetedTestCaseText.text,
+        targetedTestCaseText.lineNumberMap
+      )
       const runStopwatch = startStopwatch()
-      const failures = await runner.runTestCase(registry, parsedTestCase)
+      const failures = await resolvedRunner.runner.runTestCase(registry, parsedTestCase)
       logInfo(`Assertion test execution completed in ${formatDuration(runStopwatch())}.`)
       const renderedFailures = failures.map((failure) =>
         renderTestFailure(failure, parsedTestCase, runnableSourceLines, document)
@@ -463,25 +466,26 @@ function createTestRunExecutionContext(): TestRunExecutionContext {
 }
 
 function getOrCreateRegistry(
-  runner: GrammarTestRunner,
+  resolvedRunner: ResolvedGrammarTestRunner,
   grammars: readonly GrammarContribution[],
   executionContext: TestRunExecutionContext
 ): GrammarTestRegistry {
-  const cacheKey = JSON.stringify(
-    grammars.map((grammar) => ({
+  const cacheKey = JSON.stringify({
+    grammars: grammars.map((grammar) => ({
       injectTo: grammar.injectTo ?? [],
       language: grammar.language ?? '',
       path: grammar.path,
       scopeName: grammar.scopeName
-    }))
-  )
+    })),
+    runnerId: resolvedRunner.id
+  })
   const cachedRegistry = executionContext.registries.get(cacheKey)
   if (cachedRegistry) {
     return cachedRegistry
   }
 
   const registryStopwatch = startStopwatch()
-  const registry = runner.createRegistry(grammars)
+  const registry = resolvedRunner.runner.createRegistry(grammars)
   executionContext.registries.set(cacheKey, registry)
   logInfo(`Testing registry created in ${formatDuration(registryStopwatch())}.`)
   return registry
