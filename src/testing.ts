@@ -26,16 +26,19 @@ import { rememberTestFailureSourceLocation } from './testMessageActions'
 import { parseGrammarTestCaseWithCompat } from './tmgrammarTestCompat'
 import { GrammarContribution } from './grammarTypes'
 
-const { createRegistry } = require('vscode-tmgrammar-test/dist/common/index') as {
+type VscodeTmgrammarTestCommonApi = {
   createRegistry: (grammars: readonly { injectTo?: string[]; language?: string; path: string; scopeName: string }[]) => unknown
 }
-const { parseGrammarTestCase, runGrammarTestCase } = require('vscode-tmgrammar-test/dist/unit/index') as {
+type VscodeTmgrammarTestUnitApi = {
   parseGrammarTestCase: (value: string) => GrammarTestCase
   runGrammarTestCase: (registry: unknown, testCase: GrammarTestCase) => Promise<TestFailure[]>
 }
-const { parseScopeAssertion } = require('vscode-tmgrammar-test/dist/unit/parsing') as {
+type VscodeTmgrammarTestParsingApi = {
   parseScopeAssertion: (testCaseLineNumber: number, commentLength: number, assertionLine: string) => unknown[]
 }
+type VscodeTmgrammarTestRuntime = VscodeTmgrammarTestCommonApi & VscodeTmgrammarTestUnitApi & VscodeTmgrammarTestParsingApi
+
+let vscodeTmgrammarTestRuntime: VscodeTmgrammarTestRuntime | undefined
 
 const REFRESH_DEBOUNCE_MS = 120
 const TEST_CONTROLLER_ID = 'tmGrammarTestTools'
@@ -124,6 +127,25 @@ export function registerTestingController(context: vscode.ExtensionContext): vsc
   })
 }
 
+function getVscodeTmgrammarTestRuntime(): VscodeTmgrammarTestRuntime {
+  if (vscodeTmgrammarTestRuntime) {
+    return vscodeTmgrammarTestRuntime
+  }
+
+  const { createRegistry } = require('vscode-tmgrammar-test/dist/common/index') as VscodeTmgrammarTestCommonApi
+  const { parseGrammarTestCase, runGrammarTestCase } = require('vscode-tmgrammar-test/dist/unit/index') as VscodeTmgrammarTestUnitApi
+  const { parseScopeAssertion } = require('vscode-tmgrammar-test/dist/unit/parsing') as VscodeTmgrammarTestParsingApi
+
+  vscodeTmgrammarTestRuntime = {
+    createRegistry,
+    parseGrammarTestCase,
+    parseScopeAssertion,
+    runGrammarTestCase
+  }
+
+  return vscodeTmgrammarTestRuntime
+}
+
 async function runTests(
   controller: vscode.TestController,
   request: vscode.TestRunRequest,
@@ -196,17 +218,18 @@ async function runTestItem(
     logTestTabWarning(lines, runnableSourceLines, header.commentToken, target)
     const testContext = await loadTestContext(document, executionContext)
 
+    const runner = getVscodeTmgrammarTestRuntime()
     const registry = getOrCreateRegistry(testContext.grammars, executionContext)
 
     if (target.kind === 'file') {
       syncFileItemChildren(controller, testItem, document, runnableSourceLines)
       const parsedTestCase = parseGrammarTestCaseWithCompat(
         text,
-        parseGrammarTestCase,
-        parseScopeAssertion
+        runner.parseGrammarTestCase,
+        runner.parseScopeAssertion
       )
       const runStopwatch = startStopwatch()
-      const failures = await runGrammarTestCase(registry, parsedTestCase)
+      const failures = await runner.runGrammarTestCase(registry, parsedTestCase)
       logInfo(`Assertion test execution completed in ${formatDuration(runStopwatch())}.`)
       const renderedFailures = failures.map((failure) => renderTestFailure(failure, parsedTestCase, runnableSourceLines, document))
       reportFileRunResult(run, testItem, renderedFailures, runnableSourceLines)
@@ -223,12 +246,12 @@ async function runTestItem(
 
       const parsedTestCase = parseGrammarTestCaseWithCompat(
         targetedTestCaseText.text,
-        parseGrammarTestCase,
-        parseScopeAssertion,
+        runner.parseGrammarTestCase,
+        runner.parseScopeAssertion,
         targetedTestCaseText.lineNumberMap
       )
       const runStopwatch = startStopwatch()
-      const failures = await runGrammarTestCase(registry, parsedTestCase)
+      const failures = await runner.runGrammarTestCase(registry, parsedTestCase)
       logInfo(`Assertion test execution completed in ${formatDuration(runStopwatch())}.`)
       const renderedFailures = failures.map((failure) =>
         renderTestFailure(failure, parsedTestCase, runnableSourceLines, document)
@@ -498,7 +521,7 @@ function getOrCreateRegistry(
   }
 
   const registryStopwatch = startStopwatch()
-  const registry = createRegistry(grammars)
+  const registry = getVscodeTmgrammarTestRuntime().createRegistry(grammars)
   executionContext.registries.set(cacheKey, registry)
   logInfo(`Testing registry created in ${formatDuration(registryStopwatch())}.`)
   return registry
