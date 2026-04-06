@@ -129,3 +129,38 @@ test('getLocalVscodeTmgrammarTestRuntime loads modules from the provided local p
     await rm(tempRoot, { force: true, recursive: true })
   }
 })
+
+test('getLocalVscodeTmgrammarTestRuntime fails clearly when the local runner is unusable or incompatible', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'tmgrammar-test-tools-runner-'))
+
+  try {
+    const packageRoot = path.join(tempRoot, 'project', 'node_modules', 'vscode-tmgrammar-test')
+    const packageJsonPath = path.join(packageRoot, 'package.json')
+    const commonIndexPath = path.join(packageRoot, 'dist', 'common', 'index.js')
+    const unitIndexPath = path.join(packageRoot, 'dist', 'unit', 'index.js')
+    const parsingPath = path.join(packageRoot, 'dist', 'unit', 'parsing.js')
+
+    await mkdir(path.dirname(commonIndexPath), { recursive: true })
+    await mkdir(path.dirname(unitIndexPath), { recursive: true })
+    await writeFile(packageJsonPath, JSON.stringify({ name: 'vscode-tmgrammar-test', version: '9.9.9' }))
+    await writeFile(commonIndexPath, 'exports.createRegistry = 123;\n')
+    await writeFile(
+      unitIndexPath,
+      [
+        'exports.parseGrammarTestCase = (value) => ({ metadata: { commentToken: "//", description: "", scope: "source.js" }, source: [value], assertions: [] });',
+        'exports.runGrammarTestCase = async () => [];'
+      ].join('\n')
+    )
+    await writeFile(
+      parsingPath,
+      'exports.parseScopeAssertion = () => [{ from: 0, to: 1, scopes: ["source.js"], exclude: [] }];\n'
+    )
+
+    assert.throws(
+      () => getLocalVscodeTmgrammarTestRuntime(packageJsonPath),
+      /Local vscode-tmgrammar-test resolved from .* is unusable or incompatible\. The extension will not fall back to the bundled runner because a local runner was resolved\. Expected export "createRegistry" to be a function\./
+    )
+  } finally {
+    await rm(tempRoot, { force: true, recursive: true })
+  }
+})

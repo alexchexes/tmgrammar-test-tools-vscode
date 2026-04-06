@@ -18,25 +18,11 @@ export function getExtensionVscodeTmgrammarTestRuntime(): VscodeTmgrammarTestRun
     return extensionRuntime
   }
 
-  const { createRegistry } = require('vscode-tmgrammar-test/dist/common/index') as Pick<
-    VscodeTmgrammarTestRuntime,
-    'createRegistry'
-  >
-  const { parseGrammarTestCase, runGrammarTestCase } = require('vscode-tmgrammar-test/dist/unit/index') as Pick<
-    VscodeTmgrammarTestRuntime,
-    'parseGrammarTestCase' | 'runGrammarTestCase'
-  >
-  const { parseScopeAssertion } = require('vscode-tmgrammar-test/dist/unit/parsing') as Pick<
-    VscodeTmgrammarTestRuntime,
-    'parseScopeAssertion'
-  >
-
-  extensionRuntime = {
-    createRegistry,
-    parseGrammarTestCase,
-    parseScopeAssertion,
-    runGrammarTestCase
-  }
+  extensionRuntime = loadVscodeTmgrammarTestRuntime(
+    (moduleId) => require(moduleId) as unknown,
+    'Bundled vscode-tmgrammar-test',
+    false
+  )
 
   return extensionRuntime
 }
@@ -48,25 +34,58 @@ export function getLocalVscodeTmgrammarTestRuntime(packageJsonPath: string): Vsc
   }
 
   const localRequire = createRequire(packageJsonPath)
-  const { createRegistry } = localRequire('vscode-tmgrammar-test/dist/common/index') as Pick<
-    VscodeTmgrammarTestRuntime,
-    'createRegistry'
-  >
-  const { parseGrammarTestCase, runGrammarTestCase } = localRequire('vscode-tmgrammar-test/dist/unit/index') as Pick<
-    VscodeTmgrammarTestRuntime,
-    'parseGrammarTestCase' | 'runGrammarTestCase'
-  >
-  const { parseScopeAssertion } = localRequire('vscode-tmgrammar-test/dist/unit/parsing') as Pick<
-    VscodeTmgrammarTestRuntime,
-    'parseScopeAssertion'
-  >
-
-  const runtime = {
-    createRegistry,
-    parseGrammarTestCase,
-    parseScopeAssertion,
-    runGrammarTestCase
-  }
+  const runtime = loadVscodeTmgrammarTestRuntime(
+    (moduleId) => localRequire(moduleId) as unknown,
+    `Local vscode-tmgrammar-test resolved from ${packageJsonPath}`,
+    true
+  )
   localRuntimeCache.set(packageJsonPath, runtime)
   return runtime
+}
+
+function loadVscodeTmgrammarTestRuntime(
+  loadModule: (moduleId: string) => unknown,
+  sourceLabel: string,
+  disallowBundledFallback: boolean
+): VscodeTmgrammarTestRuntime {
+  try {
+    const commonIndex = loadModule('vscode-tmgrammar-test/dist/common/index') as Partial<
+      Pick<VscodeTmgrammarTestRuntime, 'createRegistry'>
+    >
+    const unitIndex = loadModule('vscode-tmgrammar-test/dist/unit/index') as Partial<
+      Pick<VscodeTmgrammarTestRuntime, 'parseGrammarTestCase' | 'runGrammarTestCase'>
+    >
+    const parsing = loadModule('vscode-tmgrammar-test/dist/unit/parsing') as Partial<
+      Pick<VscodeTmgrammarTestRuntime, 'parseScopeAssertion'>
+    >
+
+    return {
+      createRegistry: expectFunctionExport(commonIndex.createRegistry, 'createRegistry'),
+      parseGrammarTestCase: expectFunctionExport(unitIndex.parseGrammarTestCase, 'parseGrammarTestCase'),
+      parseScopeAssertion: expectFunctionExport(parsing.parseScopeAssertion, 'parseScopeAssertion'),
+      runGrammarTestCase: expectFunctionExport(unitIndex.runGrammarTestCase, 'runGrammarTestCase')
+    }
+  } catch (error) {
+    throw wrapRuntimeLoadError(sourceLabel, error, disallowBundledFallback)
+  }
+}
+
+function expectFunctionExport<T extends (...args: never[]) => unknown>(value: unknown, exportName: string): T {
+  if (typeof value !== 'function') {
+    throw new Error(`Expected export "${exportName}" to be a function.`)
+  }
+
+  return value as T
+}
+
+function wrapRuntimeLoadError(
+  sourceLabel: string,
+  error: unknown,
+  disallowBundledFallback: boolean
+): Error {
+  const detail = error instanceof Error ? error.message : String(error)
+  const fallbackNote = disallowBundledFallback
+    ? ' The extension will not fall back to the bundled runner because a local runner was resolved.'
+    : ''
+  return new Error(`${sourceLabel} is unusable or incompatible.${fallbackNote} ${detail}`)
 }
