@@ -16,6 +16,10 @@ export function logError(message: string): void {
   outputChannel?.appendLine(`[error] ${message}`)
 }
 
+export function logWarn(message: string): void {
+  outputChannel?.appendLine(`[warn] ${message}`)
+}
+
 export function revealLogs(): void {
   outputChannel?.show(true)
 }

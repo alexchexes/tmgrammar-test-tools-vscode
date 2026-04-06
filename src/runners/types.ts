@@ -10,11 +10,14 @@ export interface GrammarTestRunner {
 }
 
 export type GrammarTestRunnerFamily = 'vscode-tmgrammar-test' | 'textmate-grammar-test'
-export type GrammarTestRunnerSource = 'bundled' | 'workspaceDependency' | 'explicitPath'
+export type GrammarTestRunnerSource = 'bundled' | 'localDependency' | 'explicitPath'
 
 export interface ResolvedGrammarTestRunner {
   family: GrammarTestRunnerFamily
   id: string
+  resolutionNotificationKey?: string
+  resolutionWarning?: string
   runner: GrammarTestRunner
+  sourcePath?: string
   source: GrammarTestRunnerSource
 }

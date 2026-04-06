@@ -164,7 +164,11 @@ The extension integrates with VS Code’s native Testing UI.
 - `tmGrammarTestTools.testDiscovery.include` can also add candidate syntax test files across the workspace. Those file items are validated lazily when expanded or run.
 - The extension creates one file item per discovered syntax test and one child item per source line that has an assertion block.
 - You can run a whole file or a single asserted source line from the Testing view or gutter.
-- Test execution uses the real `vscode-tmgrammar-test` runner bundled with the extension.
+- Test execution currently uses the [vscode-tmgrammar-test](https://github.com/PanAeon/vscode-tmgrammar-test) runner.
+- In trusted workspaces, the extension prefers a local `vscode-tmgrammar-test` dependency resolved from the active file's own project. For untitled drafts, it resolves from the effective workspace folder. If none is found, it falls back to the runner bundled with the extension.
+- In untrusted workspaces, the extension skips local runner loading and always uses the bundled runner.
+- If a nearby `package.json` declares `vscode-tmgrammar-test` but the dependency cannot be resolved, the extension warns and falls back to the bundled runner.
+- The Output panel logs which runner source was selected for each test run.
 - Test runs use the current editor text, **including unsaved edits**, but VS Code may still save the file before running tests unless `testing.saveBeforeTest` is disabled in your settings.json.
 - Failures are shown in the Test Results UI. The `Go to Error` action selects the failing assertion line.
 - Right-clicking a failing test exposes `Go to Source Range`, which selects the source-line range covered by that failing assertion.

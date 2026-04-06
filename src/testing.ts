@@ -8,7 +8,8 @@ import {
 } from './grammarSources'
 import { loadProviderGrammarContributions } from './grammarProvider'
 import { loadInstalledGrammarContributions } from './installedGrammars'
-import { formatDuration, logError, logInfo, logRunBoundary, startStopwatch } from './log'
+import { formatDuration, logError, logInfo, logRunBoundary, logWarn, startStopwatch } from './log'
+import { consumeRunScopedResolutionWarningNotification } from './runners/resolveRunnerNotifications'
 import { resolveGrammarTestRunner } from './runners/resolveRunner'
 import { GrammarTestRegistry, ResolvedGrammarTestRunner } from './runners/types'
 import { parseHeaderLine } from './syntaxTest'
@@ -36,6 +37,7 @@ interface TestRunExecutionContext {
   localGrammarLoads: Map<string, Promise<GrammarContribution[]>>
   providerGrammarLoads: Map<string, Promise<GrammarContribution[]>>
   registries: Map<string, GrammarTestRegistry>
+  shownResolutionNotificationKeys: Set<string>
 }
 
 export function registerTestingController(context: vscode.ExtensionContext): vscode.Disposable {
@@ -187,6 +189,7 @@ async function runTestItem(
     const testContext = await loadTestContext(document, executionContext)
 
     const resolvedRunner = resolveGrammarTestRunner(document)
+    logResolvedRunner(resolvedRunner, executionContext)
     const registry = getOrCreateRegistry(resolvedRunner, testContext.grammars, executionContext)
 
     if (target.kind === 'file') {
@@ -461,7 +464,8 @@ function createTestRunExecutionContext(): TestRunExecutionContext {
   return {
     localGrammarLoads: new Map(),
     providerGrammarLoads: new Map(),
-    registries: new Map()
+    registries: new Map(),
+    shownResolutionNotificationKeys: new Set()
   }
 }
 
@@ -886,6 +890,26 @@ function logDetailedGrammarSourceEntries(entries: readonly SourcedGrammarContrib
       `  ${index + 1}. [${entry.source}] ${entry.grammar.scopeName || '<no scope>'} -> ${entry.grammar.path}${language}${injectTo}`
     )
   }
+}
+
+function logResolvedRunner(
+  resolvedRunner: ResolvedGrammarTestRunner,
+  executionContext: TestRunExecutionContext
+): void {
+  if (resolvedRunner.resolutionWarning) {
+    logWarn(resolvedRunner.resolutionWarning)
+  }
+
+  const resolutionWarningNotification = consumeRunScopedResolutionWarningNotification(
+    executionContext.shownResolutionNotificationKeys,
+    resolvedRunner
+  )
+  if (resolutionWarningNotification) {
+    void vscode.window.showWarningMessage(resolutionWarningNotification)
+  }
+
+  const sourceDetail = resolvedRunner.sourcePath ? ` from ${resolvedRunner.sourcePath}` : ''
+  logInfo(`Resolved test runner: ${resolvedRunner.family} [${resolvedRunner.source}]${sourceDetail}`)
 }
 
 interface RenderedTestFailure {
