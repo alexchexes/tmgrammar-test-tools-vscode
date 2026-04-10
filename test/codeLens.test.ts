@@ -11,12 +11,12 @@ test('code lens anchors above a non-empty source line', () => {
     {
       commandId: 'tmGrammarTestTools.insertAssertionsFull',
       sourceDocumentLine: 3,
-      title: 'Insert Assertions: Full'
+      title: 'Assertions: Full'
     },
     {
       commandId: 'tmGrammarTestTools.insertAssertionsMinimal',
       sourceDocumentLine: 3,
-      title: 'Insert Assertions: Minimal'
+      title: 'Minimal'
     }
   ])
 })
@@ -31,12 +31,12 @@ test('code lens skips blank source lines', () => {
     {
       commandId: 'tmGrammarTestTools.insertAssertionsFull',
       sourceDocumentLine: 5,
-      title: 'Insert Assertions: Full'
+      title: 'Assertions: Full'
     },
     {
       commandId: 'tmGrammarTestTools.insertAssertionsMinimal',
       sourceDocumentLine: 5,
-      title: 'Insert Assertions: Minimal'
+      title: 'Minimal'
     }
   ])
 })
@@ -55,12 +55,12 @@ test('code lens skips line comments when comment syntax is known', () => {
     {
       commandId: 'tmGrammarTestTools.insertAssertionsFull',
       sourceDocumentLine: 5,
-      title: 'Insert Assertions: Full'
+      title: 'Assertions: Full'
     },
     {
       commandId: 'tmGrammarTestTools.insertAssertionsMinimal',
       sourceDocumentLine: 5,
-      title: 'Insert Assertions: Minimal'
+      title: 'Minimal'
     }
   ])
 })
@@ -82,12 +82,12 @@ test('code lens skips lines inside block comments but keeps code with trailing c
     {
       commandId: 'tmGrammarTestTools.insertAssertionsFull',
       sourceDocumentLine: 7,
-      title: 'Insert Assertions: Full'
+      title: 'Assertions: Full'
     },
     {
       commandId: 'tmGrammarTestTools.insertAssertionsMinimal',
       sourceDocumentLine: 7,
-      title: 'Insert Assertions: Minimal'
+      title: 'Minimal'
     }
   ])
 })

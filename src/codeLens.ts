@@ -40,6 +40,6 @@ function createCodeLensSpec(sourceDocumentLine: number, scopeMode: ScopeMode): L
         ? 'tmGrammarTestTools.insertAssertionsFull'
         : 'tmGrammarTestTools.insertAssertionsMinimal',
     sourceDocumentLine,
-    title: scopeMode === 'full' ? 'Insert Assertions: Full' : 'Insert Assertions: Minimal'
+    title: scopeMode === 'full' ? 'Assertions: Full' : 'Minimal'
   }
 }
