@@ -103,6 +103,11 @@
         "command": "tmGrammarTestTools.goToTestFailureSourceRange",
         "category": "TM Grammar Test Tools",
         "title": "Go to Source Range"
+      },
+      {
+        "command": "tmGrammarTestTools.copyTestResultErrors",
+        "category": "TM Grammar Test Tools",
+        "title": "Copy"
       }
     ],
     "menus": {
@@ -114,9 +119,31 @@
         {
           "command": "tmGrammarTestTools.goToTestFailureSourceRange",
           "when": "false"
+        },
+        {
+          "command": "tmGrammarTestTools.copyTestResultErrors",
+          "when": "false"
+        }
+      ],
+      "testing/item/result": [
+        {
+          "command": "tmGrammarTestTools.copyTestResultErrors",
+          "when": "controllerId == 'tmGrammarTestTools'",
+          "group": "inline@2"
         }
       ],
       "testing/message/context": [
+        {
+          "command": "tmGrammarTestTools.copyTestFailureMessage",
+          "when": "testMessage == tmGrammarTestTools.failure",
+          "group": "inline@2"
+        },
+        {
+          "command": "tmGrammarTestTools.goToTestFailureSourceRange",
+          "when": "testMessage == tmGrammarTestTools.failure"
+        }
+      ],
+      "testing/message/content": [
         {
           "command": "tmGrammarTestTools.copyTestFailureMessage",
           "when": "testMessage == tmGrammarTestTools.failure",

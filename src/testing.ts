@@ -26,6 +26,12 @@ import {
   resolveFailureAssertionRange
 } from './testingModel'
 import { rememberTestFailureSourceLocation } from './testMessageActions'
+import {
+  forgetTestResultFailures,
+  registerTestResultCommands,
+  rememberTestResultError,
+  rememberTestResultFailures
+} from './testResultActions'
 import { GrammarContribution } from './grammarTypes'
 
 const REFRESH_DEBOUNCE_MS = 120
@@ -78,6 +84,7 @@ export function registerTestingController(context: vscode.ExtensionContext): vsc
     controller,
     runProfile,
     debugProfile,
+    registerTestResultCommands(controller),
     vscode.workspace.onDidOpenTextDocument((document) => {
       scheduleRefresh(controller, pendingRefreshes, runnableLineCache, globDiscoveredFileItemIds, document)
     }),
@@ -100,6 +107,7 @@ export function registerTestingController(context: vscode.ExtensionContext): vsc
         return
       }
 
+      forgetTestResultFailures([fileItem, ...Array.from(fileItem.children).map(([, item]) => item)])
       controller.items.delete(fileItemId)
     })
   ]
@@ -228,6 +236,7 @@ async function runTestItem(
     logInfo(`Test run completed: ${label} in ${formatDuration(stopwatch())}.`)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
+    rememberTestResultError(testItem, message)
     run.errored(testItem, new vscode.TestMessage(message), stopwatch())
     run.appendOutput(toOutputBlock([`ERROR ${label}`, message]), undefined, testItem)
     logError(`${message}\nTest run failed after ${formatDuration(stopwatch())}: ${label}`)
@@ -256,6 +265,7 @@ function reportFileRunResult(
     run.started(childItem)
     const sourceLineNumber = resolveSourceLineNumberForDocumentLine(runnableSourceLines, childItem.range?.start.line ?? -1)
     const lineFailures = failuresBySourceLineNumber.get(sourceLineNumber) ?? []
+    rememberTestResultFailures(childItem, lineFailures)
 
     if (lineFailures.length === 0) {
       run.passed(childItem)
@@ -266,10 +276,12 @@ function reportFileRunResult(
   }
 
   if (renderedFailures.length === 0) {
+    rememberTestResultFailures(fileItem, [])
     run.passed(fileItem)
     return
   }
 
+  rememberTestResultFailures(fileItem, renderedFailures)
   run.failed(fileItem, renderedFailures.map((failure) => failure.message))
 }
 
@@ -278,6 +290,7 @@ function reportLineRunResult(
   lineItem: vscode.TestItem,
   renderedFailures: readonly RenderedTestFailure[]
 ): void {
+  rememberTestResultFailures(lineItem, renderedFailures)
   if (renderedFailures.length === 0) {
     run.passed(lineItem)
     return
@@ -625,7 +638,11 @@ function renderTestFailure(
   return {
     failure,
     message,
-    outputSummary: `Line ${humanSourceLine}: ` + (summaryParts.length > 0 ? summaryParts.join('; ') : 'Assertion failed')
+    outputSummary: `Line ${humanSourceLine}: ` + (summaryParts.length > 0 ? summaryParts.join('; ') : 'Assertion failed'),
+    outputLines: [
+      `Line ${humanSourceLine}: ` + (summaryParts.length > 0 ? summaryParts.join('; ') : 'Assertion failed'),
+      ...detailParts.slice(1)
+    ]
   }
 }
 
@@ -643,7 +660,7 @@ function appendTestRunOutput(
   run.appendOutput(
     toOutputBlock([
       `FAIL ${label}`,
-      ...renderedFailures.map((failure) => failure.outputSummary)
+      ...renderedFailures.flatMap((failure) => failure.outputLines)
     ]),
     undefined,
     testItem
@@ -759,6 +776,7 @@ function handleUnavailableResolvedFileItem(
 function resetPlaceholderFileItem(controller: vscode.TestController, fileItem: vscode.TestItem): void {
   const childItems = Array.from(fileItem.children).map(([, item]) => item)
   if (childItems.length > 0) {
+    forgetTestResultFailures([fileItem, ...childItems])
     resetTestResults(controller, [fileItem, ...childItems])
     controller.invalidateTestResults(fileItem)
   }
@@ -866,6 +884,7 @@ function resetTestResults(controller: vscode.TestController, items: readonly vsc
     return
   }
 
+  forgetTestResultFailures(items)
   // VS Code does not expose a direct "clear result for this test item" API.
   // A run that includes the items and ends without reporting statuses resets
   // their stale pass/fail state back to neutral.
@@ -916,6 +935,7 @@ interface RenderedTestFailure {
   failure: GrammarTestFailure
   message: vscode.TestMessage
   outputSummary: string
+  outputLines: readonly string[]
 }
 
 function logTestTabWarning(
