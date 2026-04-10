@@ -6,65 +6,102 @@ import { loadInsertContext, logTargetTabWarning } from './insertContext'
 import { mergeSafeRefreshAssertionLines, planAppendAssertionInsertions } from './assertionRefresh'
 import { formatDuration, logError, logInfo, logRunBoundary, startStopwatch } from './log'
 import { ScopeMode } from './render'
-import { collectSelectionRangeTargets, coversWholeLine, SelectionInput } from './selectionTargets'
-import { findAssertionBlock, findTargetSourceLinesForSelections, SelectionLineTarget } from './syntaxTest'
+import { InsertTargetMode, resolveInsertTargets, ResolvedInsertTargets } from './selectionIntent'
+import { coversWholeLine, SelectionInput, SelectionRangeTarget } from './selectionTargets'
+import { findAssertionBlock, SourceLine } from './syntaxTest'
 
 export { codeLensControllerDisposable }
 
 export function registerInsertCommand(
   commandId: string,
-  targetMode: 'line' | 'range',
+  targetMode: InsertTargetMode,
   scopeModeOverride?: ScopeMode,
   lineRefreshMode: LineRefreshMode = 'safe'
 ): vscode.Disposable {
   return vscode.commands.registerTextEditorCommand(commandId, async (editor, _edit, args) => {
     const commandArgs = parseInsertCommandArgs(args)
-    const commandLabel =
-      targetMode === 'range'
-        ? `range assertions (${scopeModeOverride ?? 'configured'})`
-        : `${lineRefreshMode === 'replace' ? 'replace line' : 'line'} assertions (${scopeModeOverride ?? 'configured'})`
-
-    if (targetMode === 'range') {
-      await runInsertCommand(commandLabel, async () => {
-        await insertRangeAssertions(editor, scopeModeOverride)
-      })
-      return
-    }
+    const commandLabel = buildInsertCommandLabel(targetMode, scopeModeOverride, lineRefreshMode)
 
     await runInsertCommand(commandLabel, async () => {
-      await insertLineAssertions(editor, scopeModeOverride, lineRefreshMode, commandArgs.targetSourceDocumentLine)
+      await insertAssertions(editor, targetMode, scopeModeOverride, lineRefreshMode, commandArgs.targetSourceDocumentLine)
     })
   })
 }
 
-async function insertLineAssertions(
+async function insertAssertions(
   editor: vscode.TextEditor,
+  targetMode: InsertTargetMode,
   scopeModeOverride?: ScopeMode,
   lineRefreshMode: LineRefreshMode = 'safe',
   targetSourceDocumentLine?: number
 ): Promise<void> {
-  const context = await loadInsertContext(editor, scopeModeOverride, 'line')
-  const targetSourceLines =
-    targetSourceDocumentLine === undefined
-      ? findTargetSourceLinesForSelections(context.sourceLines, editor.selections.map(toSelectionLineTarget))
-      : context.sourceLines.filter((line) => line.documentLine === targetSourceDocumentLine)
-  logInfo(
-    `Target source lines: ${targetSourceLines.length > 0 ? targetSourceLines.map((line) => line.documentLine + 1).join(', ') : '<none>'}`
-  )
+  const context = await loadInsertContext(editor, scopeModeOverride, targetMode)
+  const resolvedTargets = resolveInsertTargets(context.sourceLines, editor.selections.map(toSelectionInput), targetMode, {
+    targetSourceDocumentLine
+  })
+  logResolvedTargets(resolvedTargets)
 
-  if (targetSourceLines.length === 0) {
-    throw new Error('Place the cursor on a source line or its assertion block, or select source lines to update.')
+  if (resolvedTargets.lineTargets.length === 0 && resolvedTargets.rangeTargets.length === 0) {
+    throw new Error(resolveNoTargetsMessage(targetMode))
   }
 
   logTargetTabWarning(
     context.document,
-    targetSourceLines.map((line) => line.documentLine),
+    collectTargetDocumentLines(resolvedTargets),
     context.assertionGenerationContext.commentToken,
     'targeted source/assertion'
   )
 
   const generationStopwatch = startStopwatch()
   const sourceLineIndexes = new Map(context.sourceLines.map((line, index) => [line.documentLine, index]))
+  const lineUpdates = await prepareLineAssertionUpdates(
+    context,
+    sourceLineIndexes,
+    resolvedTargets.lineTargets,
+    lineRefreshMode
+  )
+  const rangeResult = await prepareRangeAssertionUpdates(context, sourceLineIndexes, resolvedTargets.rangeTargets)
+  const updates = [...lineUpdates, ...rangeResult.updates].sort(
+    (left, right) => left.targetSourceLine.documentLine - right.targetSourceLine.documentLine
+  )
+
+  if (updates.length === 0) {
+    void vscode.window.showInformationMessage(buildNoAssertionsGeneratedMessage(resolvedTargets, rangeResult.skipReasons))
+    return
+  }
+
+  logInfo(`Prepared ${updates.length} assertion update(s) in ${formatDuration(generationStopwatch())}.`)
+
+  const editStopwatch = startStopwatch()
+  const editApplied = await editor.edit((editBuilder) => {
+    for (const update of updates) {
+      applyAssertionEdit(
+        context.document,
+        editBuilder,
+        update.targetSourceLine.documentLine,
+        update.assertionBlock,
+        update.assertionLines,
+        update.editMode,
+        update.appendInsertions
+      )
+    }
+  })
+
+  if (!editApplied) {
+    throw new Error('The editor rejected the assertion update.')
+  }
+
+  logInfo(`Applied assertion edit in ${formatDuration(editStopwatch())}.`)
+  refreshCodeLenses()
+  vscode.window.setStatusBarMessage(buildSuccessMessage(resolvedTargets, updates.length), 3000)
+}
+
+async function prepareLineAssertionUpdates(
+  context: Awaited<ReturnType<typeof loadInsertContext>>,
+  sourceLineIndexes: ReadonlyMap<number, number>,
+  targetSourceLines: readonly SourceLine[],
+  lineRefreshMode: LineRefreshMode
+): Promise<AssertionUpdate[]> {
   const updates: AssertionUpdate[] = []
 
   for (const targetSourceLine of targetSourceLines) {
@@ -108,60 +145,14 @@ async function insertLineAssertions(
     })
   }
 
-  if (updates.length === 0) {
-    void vscode.window.showInformationMessage('No assertions were generated for the targeted source lines.')
-    return
-  }
-
-  logInfo(`Prepared ${updates.length} line assertion update(s) in ${formatDuration(generationStopwatch())}.`)
-
-  const editStopwatch = startStopwatch()
-  const editApplied = await editor.edit((editBuilder) => {
-    for (const update of updates) {
-      applyAssertionEdit(
-        context.document,
-        editBuilder,
-        update.targetSourceLine.documentLine,
-        update.assertionBlock,
-        update.assertionLines,
-        update.editMode,
-        update.appendInsertions
-      )
-    }
-  })
-
-  if (!editApplied) {
-    throw new Error('The editor rejected the assertion update.')
-  }
-
-  logInfo(`Applied line assertion edit in ${formatDuration(editStopwatch())}.`)
-  refreshCodeLenses()
-  vscode.window.setStatusBarMessage(
-    `Updated assertions for ${updates.length} source line${updates.length === 1 ? '' : 's'}.`,
-    3000
-  )
+  return updates
 }
 
-async function insertRangeAssertions(editor: vscode.TextEditor, scopeModeOverride?: ScopeMode): Promise<void> {
-  const context = await loadInsertContext(editor, scopeModeOverride, 'range')
-  const selectionTargets = collectSelectionRangeTargets(context.sourceLines, editor.selections.map(toSelectionInput))
-  logInfo(
-    `Range target source lines: ${selectionTargets.length > 0 ? selectionTargets.map((target) => target.sourceLine.documentLine + 1).join(', ') : '<none>'}`
-  )
-
-  if (selectionTargets.length === 0) {
-    throw new Error('Place the cursor on source text, or select source text to update.')
-  }
-
-  logTargetTabWarning(
-    context.document,
-    selectionTargets.map((target) => target.sourceLine.documentLine),
-    context.assertionGenerationContext.commentToken,
-    'targeted source/assertion'
-  )
-
-  const generationStopwatch = startStopwatch()
-  const sourceLineIndexes = new Map(context.sourceLines.map((line, index) => [line.documentLine, index]))
+async function prepareRangeAssertionUpdates(
+  context: Awaited<ReturnType<typeof loadInsertContext>>,
+  sourceLineIndexes: ReadonlyMap<number, number>,
+  selectionTargets: readonly SelectionRangeTarget[]
+): Promise<{ skipReasons: string[]; updates: AssertionUpdate[] }> {
   const updates: AssertionUpdate[] = []
   const skipReasons: string[] = []
 
@@ -232,39 +223,10 @@ async function insertRangeAssertions(editor: vscode.TextEditor, scopeModeOverrid
     })
   }
 
-  if (updates.length === 0) {
-    const detail = skipReasons.length > 0 ? ` ${skipReasons.join('; ')}.` : ''
-    void vscode.window.showInformationMessage(`No assertions were generated for the targeted selection ranges.${detail}`)
-    return
+  return {
+    skipReasons,
+    updates
   }
-
-  logInfo(`Prepared ${updates.length} range assertion update(s) in ${formatDuration(generationStopwatch())}.`)
-
-  const editStopwatch = startStopwatch()
-  const editApplied = await editor.edit((editBuilder) => {
-    for (const update of updates) {
-      applyAssertionEdit(
-        context.document,
-        editBuilder,
-        update.targetSourceLine.documentLine,
-        update.assertionBlock,
-        update.assertionLines,
-        update.editMode,
-        update.appendInsertions
-      )
-    }
-  })
-
-  if (!editApplied) {
-    throw new Error('The editor rejected the assertion update.')
-  }
-
-  logInfo(`Applied range assertion edit in ${formatDuration(editStopwatch())}.`)
-  refreshCodeLenses()
-  vscode.window.setStatusBarMessage(
-    `Updated assertions for ${updates.length} source line${updates.length === 1 ? '' : 's'} from the current range.`,
-    3000
-  )
 }
 
 async function runInsertCommand(commandLabel: string, operation: () => Promise<void>): Promise<void> {
@@ -282,13 +244,84 @@ async function runInsertCommand(commandLabel: string, operation: () => Promise<v
   }
 }
 
-function toSelectionLineTarget(selection: vscode.Selection): SelectionLineTarget {
-  return {
-    activeLine: selection.active.line,
-    endCharacter: selection.end.character,
-    endLine: selection.end.line,
-    isEmpty: selection.isEmpty,
-    startLine: selection.start.line
+function buildInsertCommandLabel(
+  targetMode: InsertTargetMode,
+  scopeModeOverride: ScopeMode | undefined,
+  lineRefreshMode: LineRefreshMode
+): string {
+  const scopeModeLabel = scopeModeOverride ?? 'configured'
+
+  switch (targetMode) {
+    case 'range':
+      return `range assertions (${scopeModeLabel})`
+    case 'auto':
+      return `insert assertions (${scopeModeLabel})`
+    case 'line':
+    default:
+      return `${lineRefreshMode === 'replace' ? 'replace line' : 'line'} assertions (${scopeModeLabel})`
+  }
+}
+
+function logResolvedTargets(resolvedTargets: ResolvedInsertTargets): void {
+  logInfo(
+    `Line target source lines: ${
+      resolvedTargets.lineTargets.length > 0
+        ? resolvedTargets.lineTargets.map((line) => line.documentLine + 1).join(', ')
+        : '<none>'
+    }`
+  )
+  logInfo(
+    `Range target source lines: ${
+      resolvedTargets.rangeTargets.length > 0
+        ? resolvedTargets.rangeTargets.map((target) => target.sourceLine.documentLine + 1).join(', ')
+        : '<none>'
+    }`
+  )
+}
+
+function collectTargetDocumentLines(resolvedTargets: ResolvedInsertTargets): number[] {
+  return [...new Set([
+    ...resolvedTargets.lineTargets.map((line) => line.documentLine),
+    ...resolvedTargets.rangeTargets.map((target) => target.sourceLine.documentLine)
+  ])].sort((left, right) => left - right)
+}
+
+function buildNoAssertionsGeneratedMessage(
+  resolvedTargets: ResolvedInsertTargets,
+  skipReasons: readonly string[]
+): string {
+  let message = 'No assertions were generated for the targeted source lines.'
+
+  if (resolvedTargets.lineTargets.length === 0 && resolvedTargets.rangeTargets.length > 0) {
+    message = 'No assertions were generated for the targeted selection ranges.'
+  } else if (resolvedTargets.lineTargets.length > 0 && resolvedTargets.rangeTargets.length > 0) {
+    message = 'No assertions were generated for the targeted source lines or selection ranges.'
+  }
+
+  if (skipReasons.length > 0) {
+    return `${message} ${skipReasons.join('; ')}.`
+  }
+
+  return message
+}
+
+function buildSuccessMessage(resolvedTargets: ResolvedInsertTargets, updatedLineCount: number): string {
+  if (resolvedTargets.lineTargets.length === 0 && resolvedTargets.rangeTargets.length > 0) {
+    return `Updated assertions for ${updatedLineCount} source line${updatedLineCount === 1 ? '' : 's'} from the current range.`
+  }
+
+  return `Updated assertions for ${updatedLineCount} source line${updatedLineCount === 1 ? '' : 's'}.`
+}
+
+function resolveNoTargetsMessage(targetMode: InsertTargetMode): string {
+  switch (targetMode) {
+    case 'range':
+      return 'Place the cursor on source text, or select source text to update.'
+    case 'auto':
+      return 'Place the cursor on a source line, or select source text to update.'
+    case 'line':
+    default:
+      return 'Place the cursor on a source line or its assertion block, or select source lines to update.'
   }
 }
 
@@ -319,7 +352,7 @@ function parseInsertCommandArgs(value: unknown): { targetSourceDocumentLine?: nu
   return {}
 }
 
-function describeEmptyRangeTarget(selectionTarget: ReturnType<typeof collectSelectionRangeTargets>[number]): string {
+function describeEmptyRangeTarget(selectionTarget: SelectionRangeTarget): string {
   const lineNumber = selectionTarget.sourceLine.documentLine + 1
 
   if (selectionTarget.explicitRanges.length === 0 && selectionTarget.cursorPositions.length > 0) {

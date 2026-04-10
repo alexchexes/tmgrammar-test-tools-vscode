@@ -14,6 +14,9 @@ import { registerTestingController } from './testing'
 export function activate(context: vscode.ExtensionContext): void {
   registerLogger(context)
   context.subscriptions.push(codeLensControllerDisposable)
+  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertAssertions', 'auto'))
+  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertAssertionsFull', 'auto', 'full'))
+  context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertAssertionsMinimal', 'auto', 'minimal'))
   context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertLineAssertions', 'line'))
   context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertLineAssertionsFull', 'line', 'full'))
   context.subscriptions.push(registerInsertCommand('tmGrammarTestTools.insertLineAssertionsMinimal', 'line', 'minimal'))

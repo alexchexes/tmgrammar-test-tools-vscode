@@ -41,6 +41,10 @@ _GIF fallback for GitHub, which doesn't render `<video>`. [Link to mp4](https://
    ```
 
 2. Use CodeLens, Code Actions (lightbulb), or the Command Palette to run one of:
+   - `Insert Assertions` as the primary command:
+     - with a single cursor or a whole-line selection, it behaves like `Insert Line Assertions`
+     - with a partial selection, it behaves like `Insert Range Assertions`
+     - when multiple lines are involved, it resolves each touched line independently
    - `Insert Line Assertions` to generate or safely refresh assertions for whole source line(s)
    - `Replace Line Assertions` to fully replace an existing line(s) assertion block
    - `Insert Range Assertions` to generate assertions only for the selected range or token at the cursor
@@ -63,55 +67,73 @@ You can bind keyboard shortcuts for all the extension commands.
 
 ```jsonc
 [
-  // Line assertions: use the configured tmGrammarTestTools.scopeMode
+  // Universal assertions: line-oriented for plain cursors / whole-line selections,
+  // range-oriented for partial selections
   {
     "key": "ctrl+alt+l",
-    "command": "tmGrammarTestTools.insertLineAssertions",
-    "when": "editorTextFocus"
-  },
-  {
-    "key": "ctrl+alt+shift+l",
-    "command": "tmGrammarTestTools.replaceLineAssertions",
+    "command": "tmGrammarTestTools.insertAssertions",
     "when": "editorTextFocus"
   },
 
-  // Line assertions: force full or minimal for this invocation
+  // Universal assertions: force full or minimal for this invocation
   {
     "key": "ctrl+alt+1",
-    "command": "tmGrammarTestTools.insertLineAssertionsFull",
+    "command": "tmGrammarTestTools.insertAssertionsFull",
     "when": "editorTextFocus"
   },
   {
     "key": "ctrl+alt+2",
-    "command": "tmGrammarTestTools.insertLineAssertionsMinimal",
+    "command": "tmGrammarTestTools.insertAssertionsMinimal",
+    "when": "editorTextFocus"
+  },
+
+  // Explicit line assertions
+  {
+    "key": "ctrl+alt+shift+l",
+    "command": "tmGrammarTestTools.insertLineAssertions",
     "when": "editorTextFocus"
   },
   {
     "key": "ctrl+alt+shift+1",
-    "command": "tmGrammarTestTools.replaceLineAssertionsFull",
+    "command": "tmGrammarTestTools.insertLineAssertionsFull",
     "when": "editorTextFocus"
   },
   {
     "key": "ctrl+alt+shift+2",
+    "command": "tmGrammarTestTools.insertLineAssertionsMinimal",
+    "when": "editorTextFocus"
+  },
+
+  // Replace line assertions
+  {
+    "key": "ctrl+alt+shift+r",
+    "command": "tmGrammarTestTools.replaceLineAssertions",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+alt+shift+3",
+    "command": "tmGrammarTestTools.replaceLineAssertionsFull",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+alt+shift+4",
     "command": "tmGrammarTestTools.replaceLineAssertionsMinimal",
     "when": "editorTextFocus"
   },
 
-  // Range assertions: use the configured tmGrammarTestTools.scopeMode
+  // Explicit range assertions
   {
     "key": "ctrl+alt+;",
     "command": "tmGrammarTestTools.insertRangeAssertions",
     "when": "editorTextFocus"
   },
-
-  // Range assertions: force full or minimal for this invocation
   {
-    "key": "ctrl+alt+3",
+    "key": "ctrl+alt+'",
     "command": "tmGrammarTestTools.insertRangeAssertionsFull",
     "when": "editorTextFocus"
   },
   {
-    "key": "ctrl+alt+4",
+    "key": "ctrl+alt+shift+'",
     "command": "tmGrammarTestTools.insertRangeAssertionsMinimal",
     "when": "editorTextFocus"
   }
@@ -124,6 +146,12 @@ You can bind keyboard shortcuts for all the extension commands.
 
 - Existing assertion lines are skipped during tokenization so TextMate rule state is preserved across source lines.
 - First-column tokens are emitted with the `<--`/`<~--` syntax when needed.
+- `Insert Assertions` is selection-intent aware:
+  - with a single plain cursor on a source line, it behaves like `Insert Line Assertions`
+  - with a whole-line selection, it also behaves like `Insert Line Assertions`
+  - with a partial selection, or with multiple cursors/selections touching the same source line, it behaves like `Insert Range Assertions`
+  - when multiple lines are touched, it resolves each source line independently
+  - CodeLens uses this command and scopes that auto behavior to the attached source line only, ignoring selections on other lines
 - `Line` assertion commands are line-oriented:
   - with empty selection they target the line at cursor(s)
   - with non-empty selection they target each touched non-blank source line top-to-bottom
@@ -146,10 +174,11 @@ Code Actions and CodeLens expose the safe `Insert` commands. The potentially des
 ## Settings
 
 - `tmGrammarTestTools.scopeMode` can be `full` or `minimal`. The generic `Line` and `Range` commands use that setting. The explicit `Full` and `Minimal` commands override it for that invocation. Default is `full`.
+  - `Insert Assertions`, `Insert Line Assertions`, and `Insert Range Assertions` all follow this rule.
 - `tmGrammarTestTools.compactRanges` defaults to `true` and merges disjoint caret ranges when they share the same rendered scope list and the tmgrammar assertion syntax can represent the merge.
 - `tmGrammarTestTools.autoLoadInstalledGrammars` defaults to `true` and controls whether installed VS Code grammars are loaded before local and provider grammars.
-- `tmGrammarTestTools.enableCodeActions` defaults to `true` and adds Code Actions for inserting line or range assertions at the current cursor or selection.
-- `tmGrammarTestTools.enableCodeLens` defaults to `true` and adds line-oriented CodeLens commands above non-empty source lines.
+- `tmGrammarTestTools.enableCodeActions` defaults to `true` and adds Code Actions for inserting assertions at the current cursor or selection, plus explicit line/range alternatives when useful.
+- `tmGrammarTestTools.enableCodeLens` defaults to `true` and adds source-line CodeLens commands that insert assertions for that line, switching between line and range behavior based on the current selection on that line.
 - `tmGrammarTestTools.configPath` points to the grammar package `package.json` when the nearest one is not the right source for the current syntax test.
 - `tmGrammarTestTools.grammarProvider.*` controls optional external grammar loading. See [Grammar Provider](#grammar-provider).
 - `tmGrammarTestTools.testDiscovery.include` / `exclude` optionally add workspace files to the Testing view by glob. Matching files are treated as candidate syntax tests and validated lazily when expanded or run, so use reasonably narrow patterns.

@@ -22,7 +22,7 @@ export interface InsertContext {
 export async function loadInsertContext(
   editor: vscode.TextEditor,
   scopeModeOverride: ScopeMode | undefined,
-  targetMode: 'line' | 'range'
+  targetMode: 'auto' | 'line' | 'range'
 ): Promise<InsertContext> {
   const stopwatch = startStopwatch()
   const document = editor.document

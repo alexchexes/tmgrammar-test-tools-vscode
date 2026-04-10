@@ -33,17 +33,17 @@ test('code actions on an assertion line offer line actions only', () => {
 
   assert.deepEqual(collectAssertionCodeActionSpecs(sourceLines, lineSelections, rangeSelections), [
     {
-      commandId: 'tmGrammarTestTools.insertLineAssertionsFull',
-      title: 'Insert Line Assertions (Full)'
+      commandId: 'tmGrammarTestTools.insertAssertionsFull',
+      title: 'Insert Assertions (Full)'
     },
     {
-      commandId: 'tmGrammarTestTools.insertLineAssertionsMinimal',
-      title: 'Insert Line Assertions (Minimal)'
+      commandId: 'tmGrammarTestTools.insertAssertionsMinimal',
+      title: 'Insert Assertions (Minimal)'
     }
   ])
 })
 
-test('code actions on a source selection offer both line and range actions', () => {
+test('code actions on a source selection prefer the universal action and keep line as an explicit alternative', () => {
   const lineSelections: SelectionLineTarget[] = [
     {
       activeLine: 1,
@@ -67,12 +67,54 @@ test('code actions on a source selection offer both line and range actions', () 
 
   assert.deepEqual(collectAssertionCodeActionSpecs(sourceLines, lineSelections, rangeSelections), [
     {
+      commandId: 'tmGrammarTestTools.insertAssertionsFull',
+      title: 'Insert Assertions (Full)'
+    },
+    {
+      commandId: 'tmGrammarTestTools.insertAssertionsMinimal',
+      title: 'Insert Assertions (Minimal)'
+    },
+    {
       commandId: 'tmGrammarTestTools.insertLineAssertionsFull',
       title: 'Insert Line Assertions (Full)'
     },
     {
       commandId: 'tmGrammarTestTools.insertLineAssertionsMinimal',
       title: 'Insert Line Assertions (Minimal)'
+    }
+  ])
+})
+
+test('code actions on a source cursor prefer the universal action and keep range as an explicit alternative', () => {
+  const lineSelections: SelectionLineTarget[] = [
+    {
+      activeLine: 1,
+      endCharacter: 0,
+      endLine: 1,
+      isEmpty: true,
+      startLine: 1
+    }
+  ]
+  const rangeSelections: SelectionInput[] = [
+    {
+      activeCharacter: 0,
+      activeLine: 1,
+      endCharacter: 0,
+      endLine: 1,
+      isEmpty: true,
+      startCharacter: 0,
+      startLine: 1
+    }
+  ]
+
+  assert.deepEqual(collectAssertionCodeActionSpecs(sourceLines, lineSelections, rangeSelections), [
+    {
+      commandId: 'tmGrammarTestTools.insertAssertionsFull',
+      title: 'Insert Assertions (Full)'
+    },
+    {
+      commandId: 'tmGrammarTestTools.insertAssertionsMinimal',
+      title: 'Insert Assertions (Minimal)'
     },
     {
       commandId: 'tmGrammarTestTools.insertRangeAssertionsFull',

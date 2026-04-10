@@ -8,14 +8,14 @@ test('code lens anchors above a non-empty source line', () => {
 
   assert.deepEqual(collectLineCodeLensSpecs(sourceLines), [
     {
-      commandId: 'tmGrammarTestTools.insertLineAssertionsFull',
+      commandId: 'tmGrammarTestTools.insertAssertionsFull',
       sourceDocumentLine: 3,
-      title: 'Line Assertions: Full'
+      title: 'Insert Assertions: Full'
     },
     {
-      commandId: 'tmGrammarTestTools.insertLineAssertionsMinimal',
+      commandId: 'tmGrammarTestTools.insertAssertionsMinimal',
       sourceDocumentLine: 3,
-      title: 'Minimal'
+      title: 'Insert Assertions: Minimal'
     }
   ])
 })
@@ -28,14 +28,14 @@ test('code lens skips blank source lines', () => {
 
   assert.deepEqual(collectLineCodeLensSpecs(sourceLines), [
     {
-      commandId: 'tmGrammarTestTools.insertLineAssertionsFull',
+      commandId: 'tmGrammarTestTools.insertAssertionsFull',
       sourceDocumentLine: 5,
-      title: 'Line Assertions: Full'
+      title: 'Insert Assertions: Full'
     },
     {
-      commandId: 'tmGrammarTestTools.insertLineAssertionsMinimal',
+      commandId: 'tmGrammarTestTools.insertAssertionsMinimal',
       sourceDocumentLine: 5,
-      title: 'Minimal'
+      title: 'Insert Assertions: Minimal'
     }
   ])
 })

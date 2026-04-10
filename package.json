@@ -59,6 +59,18 @@
   "contributes": {
     "commands": [
       {
+        "command": "tmGrammarTestTools.insertAssertions",
+        "title": "TM Grammar Test Tools: Insert Assertions"
+      },
+      {
+        "command": "tmGrammarTestTools.insertAssertionsFull",
+        "title": "TM Grammar Test Tools: Insert Assertions (Full)"
+      },
+      {
+        "command": "tmGrammarTestTools.insertAssertionsMinimal",
+        "title": "TM Grammar Test Tools: Insert Assertions (Minimal)"
+      },
+      {
         "command": "tmGrammarTestTools.insertLineAssertions",
         "title": "TM Grammar Test Tools: Insert Line Assertions"
       },
@@ -168,13 +180,13 @@
           "type": "boolean",
           "default": true,
           "scope": "resource",
-          "description": "When enabled, show Code Actions for inserting or refreshing TM Grammar Test Tools assertions at the current cursor or selection."
+          "description": "When enabled, show Code Actions for inserting or refreshing assertions at the current cursor or selection, plus explicit line/range alternatives when useful."
         },
         "tmGrammarTestTools.enableCodeLens": {
           "type": "boolean",
           "default": true,
           "scope": "resource",
-          "description": "When enabled, show CodeLens commands for inserting or refreshing line assertions near source lines in syntax tests."
+          "description": "When enabled, show CodeLens commands near source lines that insert assertions for that line, switching between line and range behavior based on the current selection on the line."
         },
         "tmGrammarTestTools.grammarProvider.command": {
           "type": "string",
