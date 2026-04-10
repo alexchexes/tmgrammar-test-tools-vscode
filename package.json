@@ -188,6 +188,12 @@
           "scope": "resource",
           "description": "When enabled, show CodeLens commands near source lines that insert assertions for that line, switching between line and range behavior based on the current selection on the line."
         },
+        "tmGrammarTestTools.hideCodeLensOnCommentLines": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "When enabled, hide CodeLens on source lines that look like language comments according to the active language configuration, falling back to the syntax-test header comment token when needed."
+        },
         "tmGrammarTestTools.grammarProvider.command": {
           "type": "string",
           "default": "",

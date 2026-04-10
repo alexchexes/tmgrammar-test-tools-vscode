@@ -2,6 +2,8 @@ import * as vscode from 'vscode'
 import { collectAssertionCodeActionSpecs } from './codeActions'
 import { collectLineCodeLensSpecs } from './codeLens'
 import { onDidChangeCodeLenses } from './codeLensController'
+import { getLanguageCommentSyntax } from './languageComments'
+import { mergeCommentSyntax } from './languageCommentsCore'
 import { SelectionInput } from './selectionTargets'
 import { getEffectiveTmGrammarConfiguration } from './settings'
 import { collectSourceLines, parseHeaderLine, SelectionLineTarget } from './syntaxTest'
@@ -61,7 +63,7 @@ export function registerCodeLensProvider(): vscode.Disposable {
     [{ scheme: 'file' }, { scheme: 'untitled' }],
     {
       onDidChangeCodeLenses,
-      provideCodeLenses(document) {
+      async provideCodeLenses(document) {
         const configuration = getEffectiveTmGrammarConfiguration(document)
         if (!(configuration.get<boolean>('enableCodeLens') ?? true)) {
           return []
@@ -83,7 +85,12 @@ export function registerCodeLensProvider(): vscode.Disposable {
           return []
         }
 
-        return collectLineCodeLensSpecs(sourceLines).map((spec) => {
+        const hideCommentLines = configuration.get<boolean>('hideCodeLensOnCommentLines') ?? true
+        const commentSyntax = hideCommentLines
+          ? mergeCommentSyntax(await getLanguageCommentSyntax(document.languageId), header.commentToken)
+          : undefined
+
+        return collectLineCodeLensSpecs(sourceLines, commentSyntax).map((spec) => {
           // Anchor at the end of the line so inserts before the line do not temporarily remap
           // the lens to the insertion boundary while VS Code refreshes CodeLens positions.
           const position = document.lineAt(spec.sourceDocumentLine).range.end

@@ -179,6 +179,7 @@ Code Actions and CodeLens expose the safe `Insert` commands. The potentially des
 - `tmGrammarTestTools.autoLoadInstalledGrammars` defaults to `true` and controls whether installed VS Code grammars are loaded before local and provider grammars.
 - `tmGrammarTestTools.enableCodeActions` defaults to `true` and adds Code Actions for inserting assertions at the current cursor or selection, plus explicit line/range alternatives when useful.
 - `tmGrammarTestTools.enableCodeLens` defaults to `true` and adds source-line CodeLens commands that insert assertions for that line, switching between line and range behavior based on the current selection on that line.
+- `tmGrammarTestTools.hideCodeLensOnCommentLines` defaults to `true` and hides CodeLens on source lines that look like language comments according to the active language configuration, with the syntax-test header comment token used as a fallback.
 - `tmGrammarTestTools.configPath` points to the grammar package `package.json` when the nearest one is not the right source for the current syntax test.
 - `tmGrammarTestTools.grammarProvider.*` controls optional external grammar loading. See [Grammar Provider](#grammar-provider).
 - `tmGrammarTestTools.testDiscovery.include` / `exclude` optionally add workspace files to the Testing view by glob. Matching files are treated as candidate syntax tests and validated lazily when expanded or run, so use reasonably narrow patterns.

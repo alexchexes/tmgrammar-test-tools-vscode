@@ -1,4 +1,5 @@
 import { ScopeMode } from './render'
+import { CommentSyntax, isCommentOnlyLine } from './languageCommentsCore'
 import { SourceLine } from './syntaxTestCore'
 
 export interface LineCodeLensSpec {
@@ -7,11 +8,21 @@ export interface LineCodeLensSpec {
   title: string
 }
 
-export function collectLineCodeLensSpecs(sourceLines: readonly SourceLine[]): LineCodeLensSpec[] {
+export function collectLineCodeLensSpecs(
+  sourceLines: readonly SourceLine[],
+  commentSyntax?: CommentSyntax
+): LineCodeLensSpec[] {
   const specs: LineCodeLensSpec[] = []
+  let commentLineState = { inBlockComment: false }
 
   for (const sourceLine of sourceLines) {
     if (sourceLine.text.trim().length === 0) {
+      continue
+    }
+
+    const commentOnlyLine = isCommentOnlyLine(sourceLine.text, commentSyntax, commentLineState)
+    commentLineState = commentOnlyLine.state
+    if (commentOnlyLine.isCommentOnly) {
       continue
     }
 
