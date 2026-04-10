@@ -2,6 +2,7 @@ import * as vscode from 'vscode'
 import { generateLineAssertionBlock, generateRangeAssertionBlock } from './assertionGenerator'
 import { applyAssertionEdit, AssertionUpdate, collectAssertionLines, LineRefreshMode } from './assertionEdits'
 import { codeLensControllerDisposable, refreshCodeLenses } from './codeLensController'
+import { buildRejectedAssertionUpdateMessage } from './insertCommandCore'
 import { loadInsertContext, logTargetTabWarning } from './insertContext'
 import { mergeSafeRefreshAssertionLines, planAppendAssertionInsertions } from './assertionRefresh'
 import { formatDuration, logError, logInfo, logRunBoundary, startStopwatch } from './log'
@@ -35,6 +36,7 @@ async function insertAssertions(
   lineRefreshMode: LineRefreshMode = 'safe',
   targetSourceDocumentLine?: number
 ): Promise<void> {
+  const preparedDocumentVersion = editor.document.version
   const context = await loadInsertContext(editor, scopeModeOverride, targetMode)
   const resolvedTargets = resolveInsertTargets(context.sourceLines, editor.selections.map(toSelectionInput), targetMode, {
     targetSourceDocumentLine
@@ -73,6 +75,10 @@ async function insertAssertions(
   logInfo(`Prepared ${updates.length} assertion update(s) in ${formatDuration(generationStopwatch())}.`)
 
   const editStopwatch = startStopwatch()
+  if (editor.document.version !== preparedDocumentVersion) {
+    throw new Error(buildRejectedAssertionUpdateMessage(preparedDocumentVersion, editor.document.version))
+  }
+
   const editApplied = await editor.edit((editBuilder) => {
     for (const update of updates) {
       applyAssertionEdit(
@@ -88,7 +94,7 @@ async function insertAssertions(
   })
 
   if (!editApplied) {
-    throw new Error('The editor rejected the assertion update.')
+    throw new Error(buildRejectedAssertionUpdateMessage(preparedDocumentVersion, editor.document.version))
   }
 
   logInfo(`Applied assertion edit in ${formatDuration(editStopwatch())}.`)
