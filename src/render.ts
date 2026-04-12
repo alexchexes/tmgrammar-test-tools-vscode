@@ -1,4 +1,5 @@
 import * as tm from 'vscode-textmate'
+import { MinimalTailScopeCount } from './minimalTailScopeCount'
 
 export type ScopeMode = 'full' | 'minimal'
 
@@ -6,6 +7,7 @@ export interface RenderOptions {
   compactRanges: boolean
   scopeMode: ScopeMode
   headerScope: string
+  minimalTailScopeCount?: MinimalTailScopeCount
 }
 
 interface AssertionSpec {
@@ -60,8 +62,10 @@ function createAssertionSpecs(tokens: readonly NormalizedToken[], options: Rende
   switch (options.scopeMode) {
     case 'minimal':
       return options.compactRanges
-        ? groupAssertionSpecsByScopes(createMinimalAssertionSpecs(tokens, options.headerScope))
-        : createMinimalAssertionSpecs(tokens, options.headerScope)
+        ? groupAssertionSpecsByScopes(
+            createMinimalAssertionSpecs(tokens, options.headerScope, options.minimalTailScopeCount ?? 1)
+          )
+        : createMinimalAssertionSpecs(tokens, options.headerScope, options.minimalTailScopeCount ?? 1)
     case 'full':
     default:
       return options.compactRanges ? groupAssertionSpecsByScopes(createFullAssertionSpecs(tokens)) : createFullAssertionSpecs(tokens)
@@ -76,7 +80,11 @@ function createFullAssertionSpecs(tokens: readonly NormalizedToken[]): Assertion
   }))
 }
 
-function createMinimalAssertionSpecs(tokens: readonly NormalizedToken[], headerScope: string): AssertionSpec[] {
+function createMinimalAssertionSpecs(
+  tokens: readonly NormalizedToken[],
+  headerScope: string,
+  minimalTailScopeCount: MinimalTailScopeCount
+): AssertionSpec[] {
   if (tokens.length === 0) {
     return []
   }
@@ -86,7 +94,7 @@ function createMinimalAssertionSpecs(tokens: readonly NormalizedToken[], headerS
   computeCoverage(root)
 
   const specs: AssertionSpec[] = []
-  collectMinimalSpecs(root, [], [], specs)
+  collectMinimalSpecs(root, [], [], specs, minimalTailScopeCount)
   return specs
 }
 
@@ -160,7 +168,8 @@ function collectMinimalSpecs(
   node: MinimalScopeNode,
   pathScopes: readonly string[],
   lastEmittedScopes: readonly string[],
-  result: AssertionSpec[]
+  result: AssertionSpec[],
+  minimalTailScopeCount: MinimalTailScopeCount
 ): void {
   const children = [...node.children.entries()]
     .map(([scope, child]) => ({
@@ -174,7 +183,14 @@ function collectMinimalSpecs(
     let nextLastEmittedScopes = lastEmittedScopes
 
     if (didCollapse || collapsedChild.terminalRanges.length > 0) {
-      const emittedScopes = childPathScopes.slice(lastEmittedScopes.length)
+      const emittedScopes = childPathScopes.slice(
+        determineMinimalEmitStartIndex(
+          childPathScopes,
+          lastEmittedScopes,
+          collapsedChild.terminalRanges.length > 0,
+          minimalTailScopeCount
+        )
+      )
       if (emittedScopes.length > 0) {
         result.push({
           order: collapsedChild.firstTokenIndex,
@@ -185,8 +201,23 @@ function collectMinimalSpecs(
       }
     }
 
-    collectMinimalSpecs(collapsedChild, childPathScopes, nextLastEmittedScopes, result)
+    collectMinimalSpecs(collapsedChild, childPathScopes, nextLastEmittedScopes, result, minimalTailScopeCount)
   }
+}
+
+function determineMinimalEmitStartIndex(
+  childPathScopes: readonly string[],
+  lastEmittedScopes: readonly string[],
+  retainTailScopes: boolean,
+  minimalTailScopeCount: MinimalTailScopeCount
+): number {
+  const deltaStartIndex = lastEmittedScopes.length
+  if (!retainTailScopes || minimalTailScopeCount === 1) {
+    return deltaStartIndex
+  }
+
+  const tailStartIndex = Math.max(0, childPathScopes.length - minimalTailScopeCount)
+  return Math.min(deltaStartIndex, tailStartIndex)
 }
 
 function collapseSharedPrefix(

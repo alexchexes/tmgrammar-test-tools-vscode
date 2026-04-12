@@ -232,6 +232,14 @@
           "scope": "resource",
           "description": "Controls whether generated assertions use exact full scope stacks or a reduced minimal form."
         },
+        "tmGrammarTestTools.minimalTailScopeCount": {
+          "type": "number",
+          "default": 1,
+          "minimum": 1,
+          "maximum": 2,
+          "scope": "resource",
+          "description": "When scopeMode is minimal, keep the last one or two scopes on terminal token assertions even if broader parent scopes were already factored out."
+        },
         "tmGrammarTestTools.autoLoadInstalledGrammars": {
           "type": "boolean",
           "default": true,

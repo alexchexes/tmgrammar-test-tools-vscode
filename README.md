@@ -167,6 +167,7 @@ You can bind keyboard shortcuts for all the extension commands.
 - `(Minimal)` command variants:
   - may omit the header scope when it is shared by every token and there is at least one more specific scope to show.
   - factor shared parent scopes so broader scopes are emitted once before narrower child scopes
+  - can retain either the last one or last two scopes on terminal token assertions via `tmGrammarTestTools.minimalTailScopeCount`
 - `Replace Line` commands always replace the whole assertion block for each targeted source line, so use with caution: they may wipe out negative assertions and weaken the test.
 
 Code Actions and CodeLens expose the safe `Insert` commands. The potentially destructive `Replace Line` commands are available from the command palette.
@@ -175,6 +176,7 @@ Code Actions and CodeLens expose the safe `Insert` commands. The potentially des
 
 - `tmGrammarTestTools.scopeMode` can be `full` or `minimal`. The generic `Line` and `Range` commands use that setting. The explicit `Full` and `Minimal` commands override it for that invocation. Default is `full`.
   - `Insert Assertions`, `Insert Line Assertions`, and `Insert Range Assertions` all follow this rule.
+- `tmGrammarTestTools.minimalTailScopeCount` defaults to `1` and, in `minimal` mode, keeps the last one or two scopes on terminal token assertions even when broader parent scopes were already factored out. Invalid values are clamped and logged as warnings.
 - `tmGrammarTestTools.compactRanges` defaults to `true` and merges disjoint caret ranges when they share the same rendered scope list and the tmgrammar assertion syntax can represent the merge.
 - `tmGrammarTestTools.autoLoadInstalledGrammars` defaults to `true` and controls whether installed VS Code grammars are loaded before local and provider grammars.
 - `tmGrammarTestTools.enableCodeActions` defaults to `true` and adds Code Actions for inserting assertions at the current cursor or selection, plus explicit line/range alternatives when useful.

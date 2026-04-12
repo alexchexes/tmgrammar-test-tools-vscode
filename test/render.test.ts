@@ -177,6 +177,35 @@ test('minimal mode factors shared internal prefixes even when the root has sibli
   ])
 })
 
+test('minimal mode can retain the last two scopes on terminal assertions after factoring', () => {
+  const assertionLines = renderAssertionBlock(
+    '#',
+    ' "/a/";',
+    [
+      token(0, 1, 'source.fake'),
+      token(1, 2, 'source.fake', 'shared.regex', 'string.regex', 'punctuation.begin.string'),
+      token(2, 5, 'source.fake', 'shared.regex', 'string.regex'),
+      token(5, 6, 'source.fake', 'shared.regex', 'string.regex', 'punctuation.end.regex'),
+      token(6, 7, 'source.fake', 'punctuation.end.string'),
+      token(7, 8, 'source.fake', 'punctuation.terminator')
+    ],
+    {
+      compactRanges: true,
+      minimalTailScopeCount: 2,
+      scopeMode: 'minimal',
+      headerScope: 'source.fake'
+    }
+  )
+
+  assert.deepEqual(assertionLines, [
+    '#^^^^^ shared.regex string.regex',
+    '#^ string.regex punctuation.begin.string',
+    '#    ^ string.regex punctuation.end.regex',
+    '#     ^ punctuation.end.string',
+    '#      ^ punctuation.terminator'
+  ])
+})
+
 test('minimal mode still compacts caret-only ranges when the same emitted scope also needs a left-arrow assertion', () => {
   const assertionLines = renderAssertionBlock(
     '#',

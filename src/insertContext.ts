@@ -5,7 +5,8 @@ import { buildDetailedGrammarSourceEntries, buildGrammarSourceSet } from './gram
 import { getEssentialGrammarSummaryLines, resolveSourcedGrammarEntries } from './grammarDebug'
 import { loadProviderGrammarContributions } from './grammarProvider'
 import { loadInstalledGrammarContributions } from './installedGrammars'
-import { formatDuration, logInfo, startStopwatch } from './log'
+import { formatDuration, logInfo, logWarn, startStopwatch } from './log'
+import { resolveMinimalTailScopeCount } from './minimalTailScopeCount'
 import { ScopeMode } from './render'
 import { getEffectiveTmGrammarConfiguration, getEffectiveWorkspaceFolder } from './settings'
 import { resolveScopeMode } from './scopeMode'
@@ -30,8 +31,13 @@ export async function loadInsertContext(
   const configuration = getEffectiveTmGrammarConfiguration(document)
   const autoLoadInstalledGrammars = configuration.get<boolean>('autoLoadInstalledGrammars') ?? true
   const logGrammarDetails = configuration.get<boolean>('logGrammarDetails') ?? false
+  const resolvedMinimalTailScopeCount = resolveMinimalTailScopeCount(configuration.get<number>('minimalTailScopeCount'))
+  if (resolvedMinimalTailScopeCount.warning) {
+    logWarn(resolvedMinimalTailScopeCount.warning)
+  }
   const assertionGenerationOptions: AssertionGenerationOptions = {
     compactRanges: configuration.get<boolean>('compactRanges') ?? true,
+    minimalTailScopeCount: resolvedMinimalTailScopeCount.value,
     scopeMode: resolveScopeMode(configuration.get<string>('scopeMode'), scopeModeOverride)
   }
   logInfo(`Insert assertions requested for ${document.uri.fsPath}`)
@@ -41,7 +47,7 @@ export async function loadInsertContext(
   }
   logInfo(`Target mode: ${targetMode}`)
   logInfo(
-    `Render options: scopeMode=${assertionGenerationOptions.scopeMode}, compactRanges=${assertionGenerationOptions.compactRanges}, autoLoadInstalledGrammars=${autoLoadInstalledGrammars}`
+    `Render options: scopeMode=${assertionGenerationOptions.scopeMode}, minimalTailScopeCount=${assertionGenerationOptions.minimalTailScopeCount}, compactRanges=${assertionGenerationOptions.compactRanges}, autoLoadInstalledGrammars=${autoLoadInstalledGrammars}`
   )
 
   if (document.lineCount === 0) {
