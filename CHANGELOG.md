@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.1 - 2026-04-12
+
+- Added more control over `Minimal` assertion output:
+  - `tmGrammarTestTools.minimalHeaderScopeFactoring` can keep or omit the shared syntax-test header scope in factored output
+- Added per-invocation overrides for `Minimal` commands:
+  - keyboard shortcuts and command args can now override `minimalHeaderScopeFactoring` and `minimalTailScopeCount`
+  - this applies to any command invocation whose effective scope mode is `minimal`, including explicit `...Minimal` commands
+- Expanded the CLI:
+  - `--minimal-header-scope-factoring <omitSharedHeader|keepSharedHeader>`
+  - `--minimal-tail-scope-count <1|2>`
+  - both options also work with `--compare` and apply to the minimal half of the output
+
 ## 0.2.0 - 2026-04-12
 
 - Added universal `Insert Assertions` commands in CodeLens, Code Actions, and the command palette. They now switch between line and range behavior automatically based on the current cursor or selection.

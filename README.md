@@ -41,18 +41,12 @@ _GIF fallback for GitHub, which doesn't render `<video>`. [Link to mp4](https://
    ```
 
 2. Use CodeLens, Code Actions (lightbulb), or the Command Palette to run one of:
-   - `Insert Assertions` as the primary command:
-     - with a single cursor or a whole-line selection, it behaves like `Insert Line Assertions`
-     - with a partial selection, it behaves like `Insert Range Assertions`
-     - when multiple lines are involved, it resolves each touched line independently
-   - `Insert Line Assertions` to generate or safely refresh assertions for whole source line(s)
-   - `Replace Line Assertions` to fully replace an existing line(s) assertion block
-   - `Insert Range Assertions` to generate assertions only for the selected range or token at the cursor
-   - `... (Full)` / `... (Minimal)` variants:
-     - `Full` emits full scope stacks starting from the syntax-test header scope
-     - `Minimal` applies a heuristic reduction and factoring pass to keep the output shorter while preserving useful scope distinctions
-     - unqualified commands use the current `tmGrammarTestTools.scopeMode: full | minimal` setting (default is `full`)
-3. The extension resolves grammars from installed VS Code grammar contributions (if `tmGrammarTestTools.autoLoadInstalledGrammars` is enabled), package.json grammar contributions, and optional [provider](#grammar-provider) output, in this order. Then it tokenizes from the top of the syntax test up to the targeted source line(s) and inserts or refreshes the assertion block under each targeted line.
+   - `Insert Assertions` is the primary command. It automatically switches between line and range behavior based on the current cursor or selection. See [Command Behavior](#command-behavior) for the exact rules.
+   - `Insert Line Assertions` safely generates or refreshes whole source line(s).
+   - `Replace Line Assertions` fully replaces an existing line assertion block.
+   - `Insert Range Assertions` generates assertions for the selected range or token at the cursor.
+   - `... (Full)` / `... (Minimal)` variants override `tmGrammarTestTools.scopeMode` for that invocation.
+3. The extension loads grammars from installed VS Code contributions (when `tmGrammarTestTools.autoLoadInstalledGrammars` is enabled), the nearest or configured `package.json`, and optional [provider](#grammar-provider) output. It then tokenizes from the top of the syntax test up to each targeted source line and inserts or refreshes the assertion block under that line.
 
 User-facing line and column numbers are 1-based unless explicitly noted otherwise.
 
@@ -186,7 +180,13 @@ Code Actions and CodeLens expose the safe `Insert` commands. The potentially des
 
 - `tmGrammarTestTools.scopeMode` can be `full` or `minimal`. The generic `Line` and `Range` commands use that setting. The explicit `Full` and `Minimal` commands override it for that invocation. Default is `full`.
   - `Insert Assertions`, `Insert Line Assertions`, and `Insert Range Assertions` all follow this rule.
-- `tmGrammarTestTools.minimalHeaderScopeFactoring` controls whether `minimal` mode omits the shared syntax-test header scope from factored output or keeps it in the shared factored prefix. Allowed values are `omitSharedHeader` (default) and `keepSharedHeader`. For example:  
+- `tmGrammarTestTools.minimalHeaderScopeFactoring` controls whether `minimal` mode omits the shared syntax-test header scope from factored output or keeps it in the shared factored prefix. Allowed values are `omitSharedHeader` (default) and `keepSharedHeader`.
+- `tmGrammarTestTools.minimalTailScopeCount` defaults to `1` and, in `minimal` mode, keeps the last one or two scopes on terminal token assertions even when broader parent scopes were already factored out. Invalid values are clamped and logged as warnings.
+  - `minimalHeaderScopeFactoring` and `minimalTailScopeCount` command arguments can override these per invocation on any command whose effective scope mode is `minimal`, including all explicit `...Minimal` commands. That is useful for custom keybindings such as binding `Insert Assertions (Minimal)` with `{ "minimalHeaderScopeFactoring": "keepSharedHeader", "minimalTailScopeCount": 2 }`
+
+<details>
+  <summary>Minimal mode examples</summary>
+
   ```php
   // "omitSharedHeader" (default)
     $foo;
@@ -198,7 +198,7 @@ Code Actions and CodeLens expose the safe `Insert` commands. The potentially des
   # ^^^^ source.php variable.other.php
   # ^ punctuation.definition.variable.php
   ```
-- `tmGrammarTestTools.minimalTailScopeCount` defaults to `1` and, in `minimal` mode, keeps the last one or two scopes on terminal token assertions even when broader parent scopes were already factored out. Invalid values are clamped and logged as warnings. Example:
+
   ```js
   // "minimalTailScopeCount": 1 (default)
     /[a-zz]/
@@ -212,7 +212,9 @@ Code Actions and CodeLens expose the safe `Insert` commands. The potentially des
   // ^    ^ constant.other.character-class.set.regexp punctuation.definition.character-class.regexp
   //  ^^^ constant.other.character-class.set.regexp constant.other.character-class.range.regexp
   ```
-  - `minimalHeaderScopeFactoring` and `minimalTailScopeCount` command arguments can override these per invocation on any command whose effective scope mode is `minimal`, including all explicit `...Minimal` commands. That is useful for custom keybindings such as binding `Insert Assertions (Minimal)` with `{ "minimalHeaderScopeFactoring": "keepSharedHeader", "minimalTailScopeCount": 2 }`
+
+</details>
+
 - `tmGrammarTestTools.compactRanges` defaults to `true` and merges disjoint caret ranges when they share the same rendered scope list and the tmgrammar assertion syntax can represent the merge.
 - `tmGrammarTestTools.autoLoadInstalledGrammars` defaults to `true` and controls whether installed VS Code grammars are loaded before local and provider grammars.
 - `tmGrammarTestTools.enableCodeActions` defaults to `true` and adds Code Actions for inserting assertions at the current cursor or selection, plus explicit line/range alternatives when useful.
@@ -265,7 +267,7 @@ The loading rules are then:
 
 ## Grammar Provider
 
-You can configure a grammar provider via workspace, workspace-folder, or global `settings.json`. That is useful when the grammars you want to test are not contributed directly via a nearby `package.json`, or are not fully described by it. For example, a repo may use generated grammars, extra base grammars, or test-only grammar files. Another case is when the grammar source is in `.cson` and the actual TextMate grammar files require a build step.
+You can configure a grammar provider via workspace, workspace-folder, or global `settings.json`. This is useful when the grammars you want to test are generated, split across files, or not fully described by a nearby `package.json` (for example, when the source grammar is in `.cson`).
 
 Example usage:
 
@@ -298,7 +300,7 @@ Example output shape:
 
 See a [small example provider](examples/grammar-provider/print-grammars.cjs) that prints a JSON array of relative grammar paths.
 
-Provider grammars are merged after installed grammars when auto-loading is enabled and after local package.json grammars, so exact scope-name matches override earlier sources, while injection grammars remain additive.
+Provider grammars participate in the normal load order described in [Grammar Loading](#grammar-loading): exact scope-name matches override earlier sources, while injection grammars remain additive.
 
 Supported variables in `tmGrammarTestTools.grammarProvider.command`:
 
