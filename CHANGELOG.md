@@ -9,8 +9,8 @@
   - show `Assertions: Loading…` while slower grammar loading or assertion generation is in progress
 - Added `tmGrammarTestTools.minimalTailScopeCount` so `Minimal` assertions can optionally keep the last two scopes instead of only the last one.
 - Improved assertion-generation feedback:
-  - clearer output message when an edit is rejected because the document changed while assertions were being prepared
   - status bar progress feedback
+  - clearer output log message when an edit is rejected
 - Expanded Testing UI support:
   - `tmGrammarTestTools.testDiscovery.include` / `exclude` can add workspace syntax test files to the Testing view by glob
   - single-line Testing runs are no longer blocked by malformed assertions elsewhere in the file
