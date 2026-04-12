@@ -1,5 +1,6 @@
 import { SourcedGrammarContribution } from './grammarSources'
 import { GrammarContribution } from './grammarTypes'
+import { MinimalHeaderScopeFactoring } from './minimalHeaderScopeFactoring'
 import { MinimalTailScopeCount } from './minimalTailScopeCount'
 import { RenderOptions, ScopeMode, renderAssertionBlock } from './render'
 import { CharacterRange, SelectionRangeTarget, clipTokensToRanges, resolveSelectionRanges } from './selectionTargets'
@@ -18,6 +19,7 @@ export interface AssertionGenerationContext {
 
 export interface AssertionGenerationOptions {
   compactRanges: boolean
+  minimalHeaderScopeFactoring?: MinimalHeaderScopeFactoring
   minimalTailScopeCount?: MinimalTailScopeCount
   scopeMode: ScopeMode
 }
@@ -70,6 +72,7 @@ function toRenderOptions(context: AssertionGenerationContext, options: Assertion
   return {
     compactRanges: options.compactRanges,
     headerScope: context.scopeName,
+    minimalHeaderScopeFactoring: options.minimalHeaderScopeFactoring,
     minimalTailScopeCount: options.minimalTailScopeCount,
     scopeMode: options.scopeMode
   }

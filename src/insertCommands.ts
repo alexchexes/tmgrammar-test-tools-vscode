@@ -33,6 +33,7 @@ export function registerInsertCommand(
         lineRefreshMode,
         commandArgs.targetSourceDocumentLine,
         commandArgs.requestedFromCodeLens,
+        commandArgs.minimalHeaderScopeFactoring,
         commandArgs.minimalTailScopeCount
       )
     })
@@ -46,6 +47,7 @@ async function insertAssertions(
   lineRefreshMode: LineRefreshMode = 'safe',
   targetSourceDocumentLine?: number,
   requestedFromCodeLens = false,
+  minimalHeaderScopeFactoringOverride?: string,
   minimalTailScopeCountOverride?: number
 ): Promise<void> {
   const feedback = createDelayedInsertFeedback({
@@ -57,7 +59,13 @@ async function insertAssertions(
   try {
     const preparedDocumentVersion = editor.document.version
     feedback.report('Loading grammars…')
-    const context = await loadInsertContext(editor, scopeModeOverride, targetMode, minimalTailScopeCountOverride)
+    const context = await loadInsertContext(
+      editor,
+      scopeModeOverride,
+      targetMode,
+      minimalHeaderScopeFactoringOverride,
+      minimalTailScopeCountOverride
+    )
     const resolvedTargets = resolveInsertTargets(
       context.sourceLines,
       editor.selections.map(toSelectionInput),

@@ -84,6 +84,46 @@ test('CLI supports --minimal-tail-scope-count in minimal mode', async () => {
   ])
 })
 
+test('CLI supports --minimal-header-scope-factoring in minimal mode', async () => {
+  const cliPath = path.resolve(__dirname, '../src/cli.js')
+  const fixtureConfigPath = path.resolve(__dirname, '../../fixtures/simple-grammar/package.json')
+  const fixtureTestPath = path.resolve(__dirname, '../../fixtures/simple-grammar/tests/example.simple-poc')
+
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    [
+      cliPath,
+      '--file',
+      fixtureTestPath,
+      '--config',
+      fixtureConfigPath,
+      '--line',
+      '4',
+      '--scope-mode',
+      'minimal',
+      '--minimal-header-scope-factoring',
+      'keepSharedHeader'
+    ],
+    {
+      cwd: path.resolve(__dirname, '../..')
+    }
+  )
+
+  const output = JSON.parse(stdout) as {
+    targets: Array<{
+      assertionLines: string[]
+    }>
+  }
+
+  assert.match(output.targets[0]?.assertionLines[0] ?? '', /^\/\/ <[-]+ source\.simple-poc$/)
+  assert.deepEqual(output.targets[0]?.assertionLines.slice(1), [
+    '// <----- keyword.control.simple-poc',
+    '//             ^^^^ string.quoted.double.simple-poc',
+    '//             ^ punctuation.definition.string.begin.simple-poc',
+    '//                ^ punctuation.definition.string.end.simple-poc'
+  ])
+})
+
 test('CLI compare mode applies --minimal-tail-scope-count to the minimal half only', async () => {
   const cliPath = path.resolve(__dirname, '../src/cli.js')
   const fixtureConfigPath = path.resolve(__dirname, '../../fixtures/simple-grammar/package.json')
@@ -110,6 +150,34 @@ test('CLI compare mode applies --minimal-tail-scope-count to the minimal half on
 
   assert.match(stdout, /^line 4\r?\nconst answer = "ok"\r?\n\r?\nminimal\r?\n\/\/ <----- keyword\.control\.simple-poc/m)
   assert.match(stdout, /^\s*\/\/             \^ string\.quoted\.double\.simple-poc punctuation\.definition\.string\.begin\.simple-poc/m)
+  assert.match(stdout, /^\s*full\r?\n\/\/ <----- source\.simple-poc keyword\.control\.simple-poc/m)
+})
+
+test('CLI compare mode applies --minimal-header-scope-factoring to the minimal half only', async () => {
+  const cliPath = path.resolve(__dirname, '../src/cli.js')
+  const fixtureConfigPath = path.resolve(__dirname, '../../fixtures/simple-grammar/package.json')
+  const fixtureTestPath = path.resolve(__dirname, '../../fixtures/simple-grammar/tests/example.simple-poc')
+
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    [
+      cliPath,
+      '--file',
+      fixtureTestPath,
+      '--config',
+      fixtureConfigPath,
+      '--line',
+      '4',
+      '--compare',
+      '--minimal-header-scope-factoring',
+      'keepSharedHeader'
+    ],
+    {
+      cwd: path.resolve(__dirname, '../..')
+    }
+  )
+
+  assert.match(stdout, /^line 4\r?\nconst answer = "ok"\r?\n\r?\nminimal\r?\n\/\/ <[-]+ source\.simple-poc/m)
   assert.match(stdout, /^\s*full\r?\n\/\/ <----- source\.simple-poc keyword\.control\.simple-poc/m)
 })
 
@@ -142,6 +210,35 @@ test('CLI rejects --minimal-tail-scope-count outside minimal mode', async () => 
   )
 })
 
+test('CLI rejects --minimal-header-scope-factoring outside minimal mode', async () => {
+  const cliPath = path.resolve(__dirname, '../src/cli.js')
+  const fixtureConfigPath = path.resolve(__dirname, '../../fixtures/simple-grammar/package.json')
+  const fixtureTestPath = path.resolve(__dirname, '../../fixtures/simple-grammar/tests/example.simple-poc')
+
+  await assert.rejects(
+    execFileAsync(
+      process.execPath,
+      [
+        cliPath,
+        '--file',
+        fixtureTestPath,
+        '--config',
+        fixtureConfigPath,
+        '--line',
+        '4',
+        '--scope-mode',
+        'full',
+        '--minimal-header-scope-factoring',
+        'keepSharedHeader'
+      ],
+      {
+        cwd: path.resolve(__dirname, '../..')
+      }
+    ),
+    /--minimal-header-scope-factoring can only be used with --scope-mode minimal\./
+  )
+})
+
 test('CLI rejects invalid --minimal-tail-scope-count values', async () => {
   const cliPath = path.resolve(__dirname, '../src/cli.js')
   const fixtureConfigPath = path.resolve(__dirname, '../../fixtures/simple-grammar/package.json')
@@ -168,6 +265,35 @@ test('CLI rejects invalid --minimal-tail-scope-count values', async () => {
       }
     ),
     /--minimal-tail-scope-count must be either "1" or "2", received: 3/
+  )
+})
+
+test('CLI rejects invalid --minimal-header-scope-factoring values', async () => {
+  const cliPath = path.resolve(__dirname, '../src/cli.js')
+  const fixtureConfigPath = path.resolve(__dirname, '../../fixtures/simple-grammar/package.json')
+  const fixtureTestPath = path.resolve(__dirname, '../../fixtures/simple-grammar/tests/example.simple-poc')
+
+  await assert.rejects(
+    execFileAsync(
+      process.execPath,
+      [
+        cliPath,
+        '--file',
+        fixtureTestPath,
+        '--config',
+        fixtureConfigPath,
+        '--line',
+        '4',
+        '--scope-mode',
+        'minimal',
+        '--minimal-header-scope-factoring',
+        'bogus'
+      ],
+      {
+        cwd: path.resolve(__dirname, '../..')
+      }
+    ),
+    /--minimal-header-scope-factoring must be either "omitSharedHeader" or "keepSharedHeader", received: bogus/
   )
 })
 

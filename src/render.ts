@@ -1,4 +1,5 @@
 import * as tm from 'vscode-textmate'
+import { MinimalHeaderScopeFactoring } from './minimalHeaderScopeFactoring'
 import { MinimalTailScopeCount } from './minimalTailScopeCount'
 
 export type ScopeMode = 'full' | 'minimal'
@@ -7,6 +8,7 @@ export interface RenderOptions {
   compactRanges: boolean
   scopeMode: ScopeMode
   headerScope: string
+  minimalHeaderScopeFactoring?: MinimalHeaderScopeFactoring
   minimalTailScopeCount?: MinimalTailScopeCount
 }
 
@@ -63,9 +65,19 @@ function createAssertionSpecs(tokens: readonly NormalizedToken[], options: Rende
     case 'minimal':
       return options.compactRanges
         ? groupAssertionSpecsByScopes(
-            createMinimalAssertionSpecs(tokens, options.headerScope, options.minimalTailScopeCount ?? 1)
+            createMinimalAssertionSpecs(
+              tokens,
+              options.headerScope,
+              options.minimalHeaderScopeFactoring ?? 'omitSharedHeader',
+              options.minimalTailScopeCount ?? 1
+            )
           )
-        : createMinimalAssertionSpecs(tokens, options.headerScope, options.minimalTailScopeCount ?? 1)
+        : createMinimalAssertionSpecs(
+            tokens,
+            options.headerScope,
+            options.minimalHeaderScopeFactoring ?? 'omitSharedHeader',
+            options.minimalTailScopeCount ?? 1
+          )
     case 'full':
     default:
       return options.compactRanges ? groupAssertionSpecsByScopes(createFullAssertionSpecs(tokens)) : createFullAssertionSpecs(tokens)
@@ -83,13 +95,14 @@ function createFullAssertionSpecs(tokens: readonly NormalizedToken[]): Assertion
 function createMinimalAssertionSpecs(
   tokens: readonly NormalizedToken[],
   headerScope: string,
+  minimalHeaderScopeFactoring: MinimalHeaderScopeFactoring,
   minimalTailScopeCount: MinimalTailScopeCount
 ): AssertionSpec[] {
   if (tokens.length === 0) {
     return []
   }
 
-  const normalizedTokens = dropHeaderScope(tokens, headerScope)
+  const normalizedTokens = dropHeaderScope(tokens, headerScope, minimalHeaderScopeFactoring)
   const root = buildMinimalScopeTree(normalizedTokens)
   computeCoverage(root)
 
@@ -98,7 +111,15 @@ function createMinimalAssertionSpecs(
   return specs
 }
 
-function dropHeaderScope(tokens: readonly NormalizedToken[], headerScope: string): NormalizedToken[] {
+function dropHeaderScope(
+  tokens: readonly NormalizedToken[],
+  headerScope: string,
+  minimalHeaderScopeFactoring: MinimalHeaderScopeFactoring
+): NormalizedToken[] {
+  if (minimalHeaderScopeFactoring === 'keepSharedHeader') {
+    return [...tokens]
+  }
+
   const canDropHeader =
     headerScope.length > 0 &&
     tokens.every((token) => token.scopes[0] === headerScope) &&

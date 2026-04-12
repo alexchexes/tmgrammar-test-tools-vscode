@@ -9,6 +9,10 @@ import {
 import { findGrammarConfigPathForFile, loadGrammarContributionsFromConfig } from './grammarPackage'
 import { buildDetailedGrammarSourceEntries, buildGrammarSourceSet } from './grammarSources'
 import { getEssentialGrammarSummaryLines, resolveSourcedGrammarEntries } from './grammarDebug'
+import {
+  MinimalHeaderScopeFactoring,
+  normalizeMinimalHeaderScopeFactoring
+} from './minimalHeaderScopeFactoring'
 import { normalizeMinimalTailScopeCount } from './minimalTailScopeCount'
 import { normalizeConfiguredProviderScopes, shouldRunProviderForScope } from './providerScopeFilter'
 import { resolveProjectRootForFile } from './projectRoots'
@@ -25,6 +29,7 @@ interface CliArguments {
   help: boolean
   lineTargets: number[]
   logLevel: 'silent' | 'info' | 'debug'
+  minimalHeaderScopeFactoring: MinimalHeaderScopeFactoring
   minimalTailScopeCount: 1 | 2
   outputMode: 'json' | 'plain' | 'compare'
   providerCommand?: string
@@ -182,6 +187,7 @@ export async function runCli(argv: readonly string[]): Promise<CliOutput> {
   }
   const generationOptions: AssertionGenerationOptions = {
     compactRanges: args.compactRanges,
+    minimalHeaderScopeFactoring: args.minimalHeaderScopeFactoring,
     minimalTailScopeCount: args.minimalTailScopeCount,
     scopeMode: args.scopeMode
   }
@@ -296,6 +302,7 @@ function parseArguments(argv: readonly string[]): CliArguments {
     help: false,
     lineTargets: [],
     logLevel: 'silent',
+    minimalHeaderScopeFactoring: 'omitSharedHeader',
     minimalTailScopeCount: 1,
     outputMode: 'json',
     providerScopes: [],
@@ -336,6 +343,11 @@ function parseArguments(argv: readonly string[]): CliArguments {
         break
       case '--minimal-tail-scope-count':
         args.minimalTailScopeCount = parseMinimalTailScopeCount(readValue(argv, ++index, '--minimal-tail-scope-count'))
+        break
+      case '--minimal-header-scope-factoring':
+        args.minimalHeaderScopeFactoring = parseMinimalHeaderScopeFactoring(
+          readValue(argv, ++index, '--minimal-header-scope-factoring')
+        )
         break
       case '--compact-ranges':
         args.compactRanges = true
@@ -382,6 +394,10 @@ function parseArguments(argv: readonly string[]): CliArguments {
     throw new Error('--minimal-tail-scope-count can only be used with --scope-mode minimal.')
   }
 
+  if (args.outputMode !== 'compare' && args.scopeMode === 'full' && args.minimalHeaderScopeFactoring !== 'omitSharedHeader') {
+    throw new Error('--minimal-header-scope-factoring can only be used with --scope-mode minimal.')
+  }
+
   return args
 }
 
@@ -418,6 +434,17 @@ function parseMinimalTailScopeCount(value: string): 1 | 2 {
   }
 
   throw new Error(`--minimal-tail-scope-count must be either "1" or "2", received: ${value}`)
+}
+
+function parseMinimalHeaderScopeFactoring(value: string): MinimalHeaderScopeFactoring {
+  if (value === 'omitSharedHeader' || value === 'keepSharedHeader') {
+    return normalizeMinimalHeaderScopeFactoring(value)
+  }
+
+  throw new Error(
+    '--minimal-header-scope-factoring must be either "omitSharedHeader" or "keepSharedHeader", ' +
+      `received: ${value}`
+  )
 }
 
 function parseLogLevel(value: string): CliArguments['logLevel'] {
@@ -480,6 +507,8 @@ function buildHelpText(): string {
     '  --provider-scope <scope>           Repeatable exact syntax-test scope filter for --provider-command.',
     '  --provider-timeout-ms <ms>         Provider command timeout in milliseconds.',
     '  --scope-mode <full|minimal>        Assertion rendering mode. Defaults to full.',
+    '  --minimal-header-scope-factoring <omitSharedHeader|keepSharedHeader>',
+    '                                     In minimal mode, omit or keep the shared header scope in the factored output.',
     '  --minimal-tail-scope-count <1|2>   In minimal mode, keep the last one or two scopes on terminal assertions.',
     '  --log-level <silent|info|debug>    Print diagnostics to stderr. Defaults to silent.',
     '  --json                             Print structured JSON output. This is the default.',
@@ -558,11 +587,12 @@ function createCliLogger(logLevel: CliArguments['logLevel']): {
 async function generateLineComparison(
   context: AssertionGenerationContext,
   sourceLineIndex: number,
-  args: Pick<CliArguments, 'compactRanges' | 'minimalTailScopeCount'>
+  args: Pick<CliArguments, 'compactRanges' | 'minimalHeaderScopeFactoring' | 'minimalTailScopeCount'>
 ): Promise<CliScopeModeComparison> {
   return {
     minimalAssertionLines: await generateLineAssertionBlock(context, sourceLineIndex, {
       compactRanges: args.compactRanges,
+      minimalHeaderScopeFactoring: args.minimalHeaderScopeFactoring,
       minimalTailScopeCount: args.minimalTailScopeCount,
       scopeMode: 'minimal'
     }),
@@ -577,10 +607,11 @@ async function generateRangeComparison(
   context: AssertionGenerationContext,
   sourceLineIndex: number,
   rangeTarget: ReturnType<typeof collectSelectionRangeTargets>[number],
-  args: Pick<CliArguments, 'compactRanges' | 'minimalTailScopeCount'>
+  args: Pick<CliArguments, 'compactRanges' | 'minimalHeaderScopeFactoring' | 'minimalTailScopeCount'>
 ): Promise<CliScopeModeComparison> {
   const minimal = await generateRangeAssertionBlock(context, sourceLineIndex, rangeTarget, {
     compactRanges: args.compactRanges,
+    minimalHeaderScopeFactoring: args.minimalHeaderScopeFactoring,
     minimalTailScopeCount: args.minimalTailScopeCount,
     scopeMode: 'minimal'
   })

@@ -240,6 +240,16 @@
           "scope": "resource",
           "description": "When scopeMode is minimal, keep the last one or two scopes on terminal token assertions even if broader parent scopes were already factored out."
         },
+        "tmGrammarTestTools.minimalHeaderScopeFactoring": {
+          "type": "string",
+          "enum": [
+            "omitSharedHeader",
+            "keepSharedHeader"
+          ],
+          "default": "omitSharedHeader",
+          "scope": "resource",
+          "description": "When scopeMode is minimal, either omit the shared syntax-test header scope from the factored output or keep it as part of the shared factored prefix."
+        },
         "tmGrammarTestTools.autoLoadInstalledGrammars": {
           "type": "boolean",
           "default": true,

@@ -89,7 +89,10 @@ You can bind keyboard shortcuts for all the extension commands.
   {
     "key": "ctrl+alt+3",
     "command": "tmGrammarTestTools.insertAssertionsMinimal",
-    "args": { "minimalTailScopeCount": 2 },
+    "args": {
+      "minimalHeaderScopeFactoring": "keepSharedHeader",
+      "minimalTailScopeCount": 2
+    },
     "when": "editorTextFocus"
   },
 
@@ -173,6 +176,7 @@ You can bind keyboard shortcuts for all the extension commands.
 - `(Minimal)` command variants:
   - may omit the header scope when it is shared by every token and there is at least one more specific scope to show.
   - factor shared parent scopes so broader scopes are emitted once before narrower child scopes
+  - can either omit that shared header scope from the factored output or keep it as part of the shared factored prefix via `tmGrammarTestTools.minimalHeaderScopeFactoring`
   - can retain either the last one or last two scopes on terminal token assertions via `tmGrammarTestTools.minimalTailScopeCount`
 - `Replace Line` commands always replace the whole assertion block for each targeted source line, so use with caution: they may wipe out negative assertions and weaken the test.
 
@@ -182,8 +186,33 @@ Code Actions and CodeLens expose the safe `Insert` commands. The potentially des
 
 - `tmGrammarTestTools.scopeMode` can be `full` or `minimal`. The generic `Line` and `Range` commands use that setting. The explicit `Full` and `Minimal` commands override it for that invocation. Default is `full`.
   - `Insert Assertions`, `Insert Line Assertions`, and `Insert Range Assertions` all follow this rule.
-- `tmGrammarTestTools.minimalTailScopeCount` defaults to `1` and, in `minimal` mode, keeps the last one or two scopes on terminal token assertions even when broader parent scopes were already factored out. Invalid values are clamped and logged as warnings.
-  - command arguments can override it per invocation, which is useful for custom keybindings such as binding `Insert Assertions (Minimal)` with `{ "minimalTailScopeCount": 2 }`
+- `tmGrammarTestTools.minimalHeaderScopeFactoring` controls whether `minimal` mode omits the shared syntax-test header scope from factored output or keeps it in the shared factored prefix. Allowed values are `omitSharedHeader` (default) and `keepSharedHeader`. For example:  
+  ```php
+  // "omitSharedHeader" (default)
+    $foo;
+  # ^^^^ variable.other.php
+  # ^ punctuation.definition.variable.php
+
+  // "keepSharedHeader"
+    $foo;
+  # ^^^^ source.php variable.other.php
+  # ^ punctuation.definition.variable.php
+  ```
+- `tmGrammarTestTools.minimalTailScopeCount` defaults to `1` and, in `minimal` mode, keeps the last one or two scopes on terminal token assertions even when broader parent scopes were already factored out. Invalid values are clamped and logged as warnings. Example:
+  ```js
+  // "minimalTailScopeCount": 1 (default)
+    /[a-zz]/
+  // ^^^^^^ string.regexp.js constant.other.character-class.set.regexp
+  // ^    ^ punctuation.definition.character-class.regexp
+  //  ^^^ constant.other.character-class.range.regexp
+
+  // "minimalTailScopeCount": 2
+    /[a-zz]/
+  // ^^^^^^ string.regexp.js constant.other.character-class.set.regexp
+  // ^    ^ constant.other.character-class.set.regexp punctuation.definition.character-class.regexp
+  //  ^^^ constant.other.character-class.set.regexp constant.other.character-class.range.regexp
+  ```
+  - `minimalHeaderScopeFactoring` and `minimalTailScopeCount` command arguments can override these per invocation on any command whose effective scope mode is `minimal`, including all explicit `...Minimal` commands. That is useful for custom keybindings such as binding `Insert Assertions (Minimal)` with `{ "minimalHeaderScopeFactoring": "keepSharedHeader", "minimalTailScopeCount": 2 }`
 - `tmGrammarTestTools.compactRanges` defaults to `true` and merges disjoint caret ranges when they share the same rendered scope list and the tmgrammar assertion syntax can represent the merge.
 - `tmGrammarTestTools.autoLoadInstalledGrammars` defaults to `true` and controls whether installed VS Code grammars are loaded before local and provider grammars.
 - `tmGrammarTestTools.enableCodeActions` defaults to `true` and adds Code Actions for inserting assertions at the current cursor or selection, plus explicit line/range alternatives when useful.
@@ -343,6 +372,7 @@ Grammar loading:
 Render options:
 
 - `--scope-mode <full|minimal>` controls full vs minimal rendering.
+- `--minimal-header-scope-factoring <omitSharedHeader|keepSharedHeader>` controls whether minimal mode omits the shared syntax-test header scope from the factored output or keeps it as part of the shared factored prefix. It can only be used with `--scope-mode minimal`, and `--compare` applies it to the minimal half of the comparison output.
 - `--minimal-tail-scope-count <1|2>` controls how many trailing scopes minimal mode keeps on terminal assertions. It can only be used with `--scope-mode minimal`, and `--compare` applies it to the minimal half of the comparison output.
 - `--compact-ranges` enables disjoint caret compaction. Enabled by default.
 - `--no-compact-ranges` disables disjoint caret compaction.

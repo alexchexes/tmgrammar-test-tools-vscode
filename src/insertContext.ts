@@ -6,6 +6,7 @@ import { getEssentialGrammarSummaryLines, resolveSourcedGrammarEntries } from '.
 import { loadProviderGrammarContributions } from './grammarProvider'
 import { loadInstalledGrammarContributions } from './installedGrammars'
 import { formatDuration, logInfo, logWarn, startStopwatch } from './log'
+import { resolveMinimalHeaderScopeFactoring } from './minimalHeaderScopeFactoring'
 import { resolveMinimalTailScopeCount } from './minimalTailScopeCount'
 import { ScopeMode } from './render'
 import { getEffectiveTmGrammarConfiguration, getEffectiveWorkspaceFolder } from './settings'
@@ -24,6 +25,7 @@ export async function loadInsertContext(
   editor: vscode.TextEditor,
   scopeModeOverride: ScopeMode | undefined,
   targetMode: 'auto' | 'line' | 'range',
+  minimalHeaderScopeFactoringOverride?: string,
   minimalTailScopeCountOverride?: number
 ): Promise<InsertContext> {
   const stopwatch = startStopwatch()
@@ -32,6 +34,12 @@ export async function loadInsertContext(
   const configuration = getEffectiveTmGrammarConfiguration(document)
   const autoLoadInstalledGrammars = configuration.get<boolean>('autoLoadInstalledGrammars') ?? true
   const logGrammarDetails = configuration.get<boolean>('logGrammarDetails') ?? false
+  const resolvedMinimalHeaderScopeFactoring = resolveMinimalHeaderScopeFactoring(
+    minimalHeaderScopeFactoringOverride ?? configuration.get<string>('minimalHeaderScopeFactoring')
+  )
+  if (resolvedMinimalHeaderScopeFactoring.warning) {
+    logWarn(resolvedMinimalHeaderScopeFactoring.warning)
+  }
   const resolvedMinimalTailScopeCount = resolveMinimalTailScopeCount(
     minimalTailScopeCountOverride ?? configuration.get<number>('minimalTailScopeCount')
   )
@@ -40,6 +48,7 @@ export async function loadInsertContext(
   }
   const assertionGenerationOptions: AssertionGenerationOptions = {
     compactRanges: configuration.get<boolean>('compactRanges') ?? true,
+    minimalHeaderScopeFactoring: resolvedMinimalHeaderScopeFactoring.value,
     minimalTailScopeCount: resolvedMinimalTailScopeCount.value,
     scopeMode: resolveScopeMode(configuration.get<string>('scopeMode'), scopeModeOverride)
   }
@@ -50,7 +59,7 @@ export async function loadInsertContext(
   }
   logInfo(`Target mode: ${targetMode}`)
   logInfo(
-    `Render options: scopeMode=${assertionGenerationOptions.scopeMode}, minimalTailScopeCount=${assertionGenerationOptions.minimalTailScopeCount}, compactRanges=${assertionGenerationOptions.compactRanges}, autoLoadInstalledGrammars=${autoLoadInstalledGrammars}`
+    `Render options: scopeMode=${assertionGenerationOptions.scopeMode}, minimalHeaderScopeFactoring=${assertionGenerationOptions.minimalHeaderScopeFactoring}, minimalTailScopeCount=${assertionGenerationOptions.minimalTailScopeCount}, compactRanges=${assertionGenerationOptions.compactRanges}, autoLoadInstalledGrammars=${autoLoadInstalledGrammars}`
   )
 
   if (document.lineCount === 0) {
