@@ -3,14 +3,15 @@ import { CommentSyntax, isCommentOnlyLine } from './languageCommentsCore'
 import { SourceLine } from './syntaxTestCore'
 
 export interface LineCodeLensSpec {
-  commandId: string
+  commandId?: string
   sourceDocumentLine: number
   title: string
 }
 
 export function collectLineCodeLensSpecs(
   sourceLines: readonly SourceLine[],
-  commentSyntax?: CommentSyntax
+  commentSyntax?: CommentSyntax,
+  loadingSourceDocumentLines: ReadonlySet<number> = new Set()
 ): LineCodeLensSpec[] {
   const specs: LineCodeLensSpec[] = []
   let commentLineState = { inBlockComment: false }
@@ -23,6 +24,15 @@ export function collectLineCodeLensSpecs(
     const commentOnlyLine = isCommentOnlyLine(sourceLine.text, commentSyntax, commentLineState)
     commentLineState = commentOnlyLine.state
     if (commentOnlyLine.isCommentOnly) {
+      continue
+    }
+
+    if (loadingSourceDocumentLines.has(sourceLine.documentLine)) {
+      specs.push({
+        commandId: 'tmGrammarTestTools.showLoadingCodeLens',
+        sourceDocumentLine: sourceLine.documentLine,
+        title: 'Assertions: Loading…'
+      })
       continue
     }
 

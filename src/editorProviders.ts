@@ -1,7 +1,7 @@
 import * as vscode from 'vscode'
 import { collectAssertionCodeActionSpecs } from './codeActions'
 import { collectLineCodeLensSpecs } from './codeLens'
-import { onDidChangeCodeLenses } from './codeLensController'
+import { isCodeLensLoading, onDidChangeCodeLenses } from './codeLensController'
 import { getLanguageCommentSyntax } from './languageComments'
 import { mergeCommentSyntax } from './languageCommentsCore'
 import { SelectionInput } from './selectionTargets'
@@ -90,15 +90,26 @@ export function registerCodeLensProvider(): vscode.Disposable {
           ? mergeCommentSyntax(await getLanguageCommentSyntax(document.languageId), header.commentToken)
           : undefined
 
-        return collectLineCodeLensSpecs(sourceLines, commentSyntax).map((spec) => {
+        const loadingSourceDocumentLines = new Set(
+          sourceLines
+            .map((sourceLine) => sourceLine.documentLine)
+            .filter((lineNumber) => isCodeLensLoading(document.uri, lineNumber))
+        )
+
+        return collectLineCodeLensSpecs(sourceLines, commentSyntax, loadingSourceDocumentLines).map((spec) => {
           // Anchor at the end of the line so inserts before the line do not temporarily remap
           // the lens to the insertion boundary while VS Code refreshes CodeLens positions.
           const position = document.lineAt(spec.sourceDocumentLine).range.end
-          return new vscode.CodeLens(new vscode.Range(position, position), {
-            arguments: [{ targetSourceDocumentLine: spec.sourceDocumentLine }],
-            command: spec.commandId,
-            title: spec.title
-          })
+          return new vscode.CodeLens(
+            new vscode.Range(position, position),
+            spec.commandId
+              ? {
+                  arguments: [{ requestedFromCodeLens: true, targetSourceDocumentLine: spec.sourceDocumentLine }],
+                  command: spec.commandId,
+                  title: spec.title
+                }
+              : undefined
+          )
         })
       }
     }

@@ -4,6 +4,7 @@ import { applyAssertionEdit, AssertionUpdate, collectAssertionLines, LineRefresh
 import { codeLensControllerDisposable, refreshCodeLenses } from './codeLensController'
 import { buildRejectedAssertionUpdateMessage } from './insertCommandCore'
 import { loadInsertContext, logTargetTabWarning } from './insertContext'
+import { createDelayedInsertFeedback } from './insertProgress'
 import { mergeSafeRefreshAssertionLines, planAppendAssertionInsertions } from './assertionRefresh'
 import { formatDuration, logError, logInfo, logRunBoundary, startStopwatch } from './log'
 import { ScopeMode } from './render'
@@ -24,7 +25,14 @@ export function registerInsertCommand(
     const commandLabel = buildInsertCommandLabel(targetMode, scopeModeOverride, lineRefreshMode)
 
     await runInsertCommand(commandLabel, async () => {
-      await insertAssertions(editor, targetMode, scopeModeOverride, lineRefreshMode, commandArgs.targetSourceDocumentLine)
+      await insertAssertions(
+        editor,
+        targetMode,
+        scopeModeOverride,
+        lineRefreshMode,
+        commandArgs.targetSourceDocumentLine,
+        commandArgs.requestedFromCodeLens
+      )
     })
   })
 }
@@ -34,72 +42,91 @@ async function insertAssertions(
   targetMode: InsertTargetMode,
   scopeModeOverride?: ScopeMode,
   lineRefreshMode: LineRefreshMode = 'safe',
-  targetSourceDocumentLine?: number
+  targetSourceDocumentLine?: number,
+  requestedFromCodeLens = false
 ): Promise<void> {
-  const preparedDocumentVersion = editor.document.version
-  const context = await loadInsertContext(editor, scopeModeOverride, targetMode)
-  const resolvedTargets = resolveInsertTargets(context.sourceLines, editor.selections.map(toSelectionInput), targetMode, {
-    targetSourceDocumentLine
+  const feedback = createDelayedInsertFeedback({
+    codeLensDocumentUri:
+      requestedFromCodeLens && typeof targetSourceDocumentLine === 'number' ? editor.document.uri : undefined,
+    codeLensSourceDocumentLine: requestedFromCodeLens ? targetSourceDocumentLine : undefined
   })
-  logResolvedTargets(resolvedTargets)
 
-  if (resolvedTargets.lineTargets.length === 0 && resolvedTargets.rangeTargets.length === 0) {
-    throw new Error(resolveNoTargetsMessage(targetMode))
-  }
+  try {
+    const preparedDocumentVersion = editor.document.version
+    feedback.report('Loading grammars…')
+    const context = await loadInsertContext(editor, scopeModeOverride, targetMode)
+    const resolvedTargets = resolveInsertTargets(
+      context.sourceLines,
+      editor.selections.map(toSelectionInput),
+      targetMode,
+      {
+        targetSourceDocumentLine
+      }
+    )
+    logResolvedTargets(resolvedTargets)
 
-  logTargetTabWarning(
-    context.document,
-    collectTargetDocumentLines(resolvedTargets),
-    context.assertionGenerationContext.commentToken,
-    'targeted source/assertion'
-  )
-
-  const generationStopwatch = startStopwatch()
-  const sourceLineIndexes = new Map(context.sourceLines.map((line, index) => [line.documentLine, index]))
-  const lineUpdates = await prepareLineAssertionUpdates(
-    context,
-    sourceLineIndexes,
-    resolvedTargets.lineTargets,
-    lineRefreshMode
-  )
-  const rangeResult = await prepareRangeAssertionUpdates(context, sourceLineIndexes, resolvedTargets.rangeTargets)
-  const updates = [...lineUpdates, ...rangeResult.updates].sort(
-    (left, right) => left.targetSourceLine.documentLine - right.targetSourceLine.documentLine
-  )
-
-  if (updates.length === 0) {
-    void vscode.window.showInformationMessage(buildNoAssertionsGeneratedMessage(resolvedTargets, rangeResult.skipReasons))
-    return
-  }
-
-  logInfo(`Prepared ${updates.length} assertion update(s) in ${formatDuration(generationStopwatch())}.`)
-
-  const editStopwatch = startStopwatch()
-  if (editor.document.version !== preparedDocumentVersion) {
-    throw new Error(buildRejectedAssertionUpdateMessage(preparedDocumentVersion, editor.document.version))
-  }
-
-  const editApplied = await editor.edit((editBuilder) => {
-    for (const update of updates) {
-      applyAssertionEdit(
-        context.document,
-        editBuilder,
-        update.targetSourceLine.documentLine,
-        update.assertionBlock,
-        update.assertionLines,
-        update.editMode,
-        update.appendInsertions
-      )
+    if (resolvedTargets.lineTargets.length === 0 && resolvedTargets.rangeTargets.length === 0) {
+      throw new Error(resolveNoTargetsMessage(targetMode))
     }
-  })
 
-  if (!editApplied) {
-    throw new Error(buildRejectedAssertionUpdateMessage(preparedDocumentVersion, editor.document.version))
+    logTargetTabWarning(
+      context.document,
+      collectTargetDocumentLines(resolvedTargets),
+      context.assertionGenerationContext.commentToken,
+      'targeted source/assertion'
+    )
+
+    const generationStopwatch = startStopwatch()
+    feedback.report('Generating assertions…')
+    const sourceLineIndexes = new Map(context.sourceLines.map((line, index) => [line.documentLine, index]))
+    const lineUpdates = await prepareLineAssertionUpdates(
+      context,
+      sourceLineIndexes,
+      resolvedTargets.lineTargets,
+      lineRefreshMode
+    )
+    const rangeResult = await prepareRangeAssertionUpdates(context, sourceLineIndexes, resolvedTargets.rangeTargets)
+    const updates = [...lineUpdates, ...rangeResult.updates].sort(
+      (left, right) => left.targetSourceLine.documentLine - right.targetSourceLine.documentLine
+    )
+
+    if (updates.length === 0) {
+      void vscode.window.showInformationMessage(buildNoAssertionsGeneratedMessage(resolvedTargets, rangeResult.skipReasons))
+      return
+    }
+
+    logInfo(`Prepared ${updates.length} assertion update(s) in ${formatDuration(generationStopwatch())}.`)
+
+    const editStopwatch = startStopwatch()
+    if (editor.document.version !== preparedDocumentVersion) {
+      throw new Error(buildRejectedAssertionUpdateMessage(preparedDocumentVersion, editor.document.version))
+    }
+
+    feedback.report('Applying assertion edit…')
+    const editApplied = await editor.edit((editBuilder) => {
+      for (const update of updates) {
+        applyAssertionEdit(
+          context.document,
+          editBuilder,
+          update.targetSourceLine.documentLine,
+          update.assertionBlock,
+          update.assertionLines,
+          update.editMode,
+          update.appendInsertions
+        )
+      }
+    })
+
+    if (!editApplied) {
+      throw new Error(buildRejectedAssertionUpdateMessage(preparedDocumentVersion, editor.document.version))
+    }
+
+    logInfo(`Applied assertion edit in ${formatDuration(editStopwatch())}.`)
+    refreshCodeLenses()
+    vscode.window.setStatusBarMessage(buildSuccessMessage(resolvedTargets, updates.length), 3000)
+  } finally {
+    await feedback.dispose()
   }
-
-  logInfo(`Applied assertion edit in ${formatDuration(editStopwatch())}.`)
-  refreshCodeLenses()
-  vscode.window.setStatusBarMessage(buildSuccessMessage(resolvedTargets, updates.length), 3000)
 }
 
 async function prepareLineAssertionUpdates(
@@ -343,16 +370,22 @@ function toSelectionInput(selection: vscode.Selection): SelectionInput {
   }
 }
 
-function parseInsertCommandArgs(value: unknown): { targetSourceDocumentLine?: number } {
-  if (
-    typeof value === 'object' &&
-    value !== null &&
-    'targetSourceDocumentLine' in value &&
-    typeof value.targetSourceDocumentLine === 'number'
-  ) {
-    return {
-      targetSourceDocumentLine: value.targetSourceDocumentLine
+function parseInsertCommandArgs(value: unknown): {
+  requestedFromCodeLens?: boolean
+  targetSourceDocumentLine?: number
+} {
+  if (typeof value === 'object' && value !== null) {
+    const result: { requestedFromCodeLens?: boolean; targetSourceDocumentLine?: number } = {}
+
+    if ('targetSourceDocumentLine' in value && typeof value.targetSourceDocumentLine === 'number') {
+      result.targetSourceDocumentLine = value.targetSourceDocumentLine
     }
+
+    if ('requestedFromCodeLens' in value && value.requestedFromCodeLens === true) {
+      result.requestedFromCodeLens = true
+    }
+
+    return result
   }
 
   return {}

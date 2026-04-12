@@ -91,3 +91,15 @@ test('code lens skips lines inside block comments but keeps code with trailing c
     }
   ])
 })
+
+test('code lens shows a loading placeholder on source lines with pending insertions', () => {
+  const sourceLines: SourceLine[] = [{ documentLine: 3, text: 'alpha' }]
+
+  assert.deepEqual(collectLineCodeLensSpecs(sourceLines, undefined, new Set([3])), [
+    {
+      commandId: 'tmGrammarTestTools.showLoadingCodeLens',
+      sourceDocumentLine: 3,
+      title: 'Assertions: Loading…'
+    }
+  ])
+})
