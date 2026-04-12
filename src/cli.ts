@@ -9,6 +9,7 @@ import {
 import { findGrammarConfigPathForFile, loadGrammarContributionsFromConfig } from './grammarPackage'
 import { buildDetailedGrammarSourceEntries, buildGrammarSourceSet } from './grammarSources'
 import { getEssentialGrammarSummaryLines, resolveSourcedGrammarEntries } from './grammarDebug'
+import { normalizeMinimalTailScopeCount } from './minimalTailScopeCount'
 import { normalizeConfiguredProviderScopes, shouldRunProviderForScope } from './providerScopeFilter'
 import { resolveProjectRootForFile } from './projectRoots'
 import { ScopeMode } from './render'
@@ -24,6 +25,7 @@ interface CliArguments {
   help: boolean
   lineTargets: number[]
   logLevel: 'silent' | 'info' | 'debug'
+  minimalTailScopeCount: 1 | 2
   outputMode: 'json' | 'plain' | 'compare'
   providerCommand?: string
   providerCwd?: string
@@ -180,6 +182,7 @@ export async function runCli(argv: readonly string[]): Promise<CliOutput> {
   }
   const generationOptions: AssertionGenerationOptions = {
     compactRanges: args.compactRanges,
+    minimalTailScopeCount: args.minimalTailScopeCount,
     scopeMode: args.scopeMode
   }
   const sourceLineIndexes = new Map(sourceLines.map((line, index) => [line.documentLine, index]))
@@ -293,6 +296,7 @@ function parseArguments(argv: readonly string[]): CliArguments {
     help: false,
     lineTargets: [],
     logLevel: 'silent',
+    minimalTailScopeCount: 1,
     outputMode: 'json',
     providerScopes: [],
     rangeTargets: [],
@@ -329,6 +333,9 @@ function parseArguments(argv: readonly string[]): CliArguments {
       case '--scope-mode':
         args.scopeMode = parseScopeMode(readValue(argv, ++index, '--scope-mode'))
         args.scopeModeProvided = true
+        break
+      case '--minimal-tail-scope-count':
+        args.minimalTailScopeCount = parseMinimalTailScopeCount(readValue(argv, ++index, '--minimal-tail-scope-count'))
         break
       case '--compact-ranges':
         args.compactRanges = true
@@ -371,6 +378,10 @@ function parseArguments(argv: readonly string[]): CliArguments {
     throw new Error('--compare cannot be combined with --scope-mode because it always prints both minimal and full output.')
   }
 
+  if (args.outputMode !== 'compare' && args.scopeMode === 'full' && args.minimalTailScopeCount !== 1) {
+    throw new Error('--minimal-tail-scope-count can only be used with --scope-mode minimal.')
+  }
+
   return args
 }
 
@@ -398,6 +409,15 @@ function parseScopeMode(value: string): ScopeMode {
   }
 
   throw new Error(`--scope-mode must be either "full" or "minimal", received: ${value}`)
+}
+
+function parseMinimalTailScopeCount(value: string): 1 | 2 {
+  const parsedValue = Number.parseInt(value, 10)
+  if (parsedValue === 1 || parsedValue === 2) {
+    return normalizeMinimalTailScopeCount(parsedValue)
+  }
+
+  throw new Error(`--minimal-tail-scope-count must be either "1" or "2", received: ${value}`)
 }
 
 function parseLogLevel(value: string): CliArguments['logLevel'] {
@@ -460,6 +480,7 @@ function buildHelpText(): string {
     '  --provider-scope <scope>           Repeatable exact syntax-test scope filter for --provider-command.',
     '  --provider-timeout-ms <ms>         Provider command timeout in milliseconds.',
     '  --scope-mode <full|minimal>        Assertion rendering mode. Defaults to full.',
+    '  --minimal-tail-scope-count <1|2>   In minimal mode, keep the last one or two scopes on terminal assertions.',
     '  --log-level <silent|info|debug>    Print diagnostics to stderr. Defaults to silent.',
     '  --json                             Print structured JSON output. This is the default.',
     '  --plain                            Print only generated assertion lines.',
@@ -537,11 +558,12 @@ function createCliLogger(logLevel: CliArguments['logLevel']): {
 async function generateLineComparison(
   context: AssertionGenerationContext,
   sourceLineIndex: number,
-  args: Pick<CliArguments, 'compactRanges'>
+  args: Pick<CliArguments, 'compactRanges' | 'minimalTailScopeCount'>
 ): Promise<CliScopeModeComparison> {
   return {
     minimalAssertionLines: await generateLineAssertionBlock(context, sourceLineIndex, {
       compactRanges: args.compactRanges,
+      minimalTailScopeCount: args.minimalTailScopeCount,
       scopeMode: 'minimal'
     }),
     fullAssertionLines: await generateLineAssertionBlock(context, sourceLineIndex, {
@@ -555,10 +577,11 @@ async function generateRangeComparison(
   context: AssertionGenerationContext,
   sourceLineIndex: number,
   rangeTarget: ReturnType<typeof collectSelectionRangeTargets>[number],
-  args: Pick<CliArguments, 'compactRanges'>
+  args: Pick<CliArguments, 'compactRanges' | 'minimalTailScopeCount'>
 ): Promise<CliScopeModeComparison> {
   const minimal = await generateRangeAssertionBlock(context, sourceLineIndex, rangeTarget, {
     compactRanges: args.compactRanges,
+    minimalTailScopeCount: args.minimalTailScopeCount,
     scopeMode: 'minimal'
   })
   const full = await generateRangeAssertionBlock(context, sourceLineIndex, rangeTarget, {

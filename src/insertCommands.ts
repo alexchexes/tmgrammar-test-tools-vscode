@@ -3,6 +3,7 @@ import { generateLineAssertionBlock, generateRangeAssertionBlock } from './asser
 import { applyAssertionEdit, AssertionUpdate, collectAssertionLines, LineRefreshMode } from './assertionEdits'
 import { codeLensControllerDisposable, refreshCodeLenses } from './codeLensController'
 import { buildRejectedAssertionUpdateMessage } from './insertCommandCore'
+import { parseInsertCommandArgs } from './insertCommandArgs'
 import { loadInsertContext, logTargetTabWarning } from './insertContext'
 import { createDelayedInsertFeedback } from './insertProgress'
 import { mergeSafeRefreshAssertionLines, planAppendAssertionInsertions } from './assertionRefresh'
@@ -31,7 +32,8 @@ export function registerInsertCommand(
         scopeModeOverride,
         lineRefreshMode,
         commandArgs.targetSourceDocumentLine,
-        commandArgs.requestedFromCodeLens
+        commandArgs.requestedFromCodeLens,
+        commandArgs.minimalTailScopeCount
       )
     })
   })
@@ -43,7 +45,8 @@ async function insertAssertions(
   scopeModeOverride?: ScopeMode,
   lineRefreshMode: LineRefreshMode = 'safe',
   targetSourceDocumentLine?: number,
-  requestedFromCodeLens = false
+  requestedFromCodeLens = false,
+  minimalTailScopeCountOverride?: number
 ): Promise<void> {
   const feedback = createDelayedInsertFeedback({
     codeLensDocumentUri:
@@ -54,7 +57,7 @@ async function insertAssertions(
   try {
     const preparedDocumentVersion = editor.document.version
     feedback.report('Loading grammars…')
-    const context = await loadInsertContext(editor, scopeModeOverride, targetMode)
+    const context = await loadInsertContext(editor, scopeModeOverride, targetMode, minimalTailScopeCountOverride)
     const resolvedTargets = resolveInsertTargets(
       context.sourceLines,
       editor.selections.map(toSelectionInput),
@@ -368,27 +371,6 @@ function toSelectionInput(selection: vscode.Selection): SelectionInput {
     startCharacter: selection.start.character,
     startLine: selection.start.line
   }
-}
-
-function parseInsertCommandArgs(value: unknown): {
-  requestedFromCodeLens?: boolean
-  targetSourceDocumentLine?: number
-} {
-  if (typeof value === 'object' && value !== null) {
-    const result: { requestedFromCodeLens?: boolean; targetSourceDocumentLine?: number } = {}
-
-    if ('targetSourceDocumentLine' in value && typeof value.targetSourceDocumentLine === 'number') {
-      result.targetSourceDocumentLine = value.targetSourceDocumentLine
-    }
-
-    if ('requestedFromCodeLens' in value && value.requestedFromCodeLens === true) {
-      result.requestedFromCodeLens = true
-    }
-
-    return result
-  }
-
-  return {}
 }
 
 function describeEmptyRangeTarget(selectionTarget: SelectionRangeTarget): string {

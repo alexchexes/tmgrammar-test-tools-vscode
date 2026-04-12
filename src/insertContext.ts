@@ -23,7 +23,8 @@ export interface InsertContext {
 export async function loadInsertContext(
   editor: vscode.TextEditor,
   scopeModeOverride: ScopeMode | undefined,
-  targetMode: 'auto' | 'line' | 'range'
+  targetMode: 'auto' | 'line' | 'range',
+  minimalTailScopeCountOverride?: number
 ): Promise<InsertContext> {
   const stopwatch = startStopwatch()
   const document = editor.document
@@ -31,7 +32,9 @@ export async function loadInsertContext(
   const configuration = getEffectiveTmGrammarConfiguration(document)
   const autoLoadInstalledGrammars = configuration.get<boolean>('autoLoadInstalledGrammars') ?? true
   const logGrammarDetails = configuration.get<boolean>('logGrammarDetails') ?? false
-  const resolvedMinimalTailScopeCount = resolveMinimalTailScopeCount(configuration.get<number>('minimalTailScopeCount'))
+  const resolvedMinimalTailScopeCount = resolveMinimalTailScopeCount(
+    minimalTailScopeCountOverride ?? configuration.get<number>('minimalTailScopeCount')
+  )
   if (resolvedMinimalTailScopeCount.warning) {
     logWarn(resolvedMinimalTailScopeCount.warning)
   }

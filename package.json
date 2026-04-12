@@ -2,7 +2,7 @@
   "name": "tmgrammar-test-tools-vscode",
   "displayName": "TM Grammar Test Tools",
   "description": "Generate, refresh, and run TextMate syntax test assertions from VS Code.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "AlexChexes",
   "license": "MIT",
   "preview": true,
