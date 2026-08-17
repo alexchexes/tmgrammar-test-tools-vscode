@@ -1,9 +1,8 @@
 import * as vscode from 'vscode'
 import { AssertionGenerationContext, AssertionGenerationOptions } from './assertionGenerator'
-import { loadGrammarContributions, tryResolveConfigPath } from './grammarConfig'
+import { loadDocumentGrammarSources } from './documentGrammarSources'
 import { buildDetailedGrammarSourceEntries, buildGrammarSourceSet } from './grammarSources'
 import { getEssentialGrammarSummaryLines, resolveSourcedGrammarEntries } from './grammarDebug'
-import { loadProviderGrammarContributions } from './grammarProvider'
 import { loadInstalledGrammarContributions } from './installedGrammars'
 import { formatDuration, logInfo, logWarn, startStopwatch } from './log'
 import { resolveMinimalHeaderScopeFactoring } from './minimalHeaderScopeFactoring'
@@ -74,28 +73,20 @@ export async function loadInsertContext(
     throw new Error('No source lines were found under the syntax test header.')
   }
 
-  const localGrammars = await loadOptionalLocalGrammarContributions(document)
-  const providerGrammars = await loadProviderGrammarContributions(document, header.scopeName)
+  const documentGrammarSources = await loadDocumentGrammarSources(document, header.scopeName)
   const installedGrammarStopwatch = startStopwatch()
   const installedGrammars = autoLoadInstalledGrammars ? loadInstalledGrammarContributions() : []
-  const grammarSources = buildGrammarSourceSet(
-    installedGrammars,
-    localGrammars,
-    providerGrammars,
-    autoLoadInstalledGrammars
-  )
-  const unresolvedSourcedGrammars = buildDetailedGrammarSourceEntries(
-    installedGrammars,
-    localGrammars,
-    providerGrammars,
-    autoLoadInstalledGrammars
-  )
+  const unresolvedSourcedGrammars = [
+    ...buildDetailedGrammarSourceEntries(installedGrammars, [], [], [], autoLoadInstalledGrammars),
+    ...documentGrammarSources.sourcedEntries
+  ]
+  const grammarSources = buildGrammarSourceSet(unresolvedSourcedGrammars)
   const sourcedGrammars = await resolveSourcedGrammarEntries(unresolvedSourcedGrammars)
   if (autoLoadInstalledGrammars) {
     logInfo(`Loaded installed grammar contributions in ${formatDuration(installedGrammarStopwatch())}.`)
   }
   logInfo(
-    `Grammar sources: installed=${grammarSources.installedCount}, local=${grammarSources.localCount}, provider=${grammarSources.providerCount}`
+    `Grammar sources: installed=${grammarSources.installedCount}, config=${grammarSources.configCount}, explicit=${grammarSources.explicitCount}, provider=${grammarSources.providerCount}`
   )
   getEssentialGrammarSummaryLines(
     sourcedGrammars,
@@ -134,18 +125,4 @@ export function logTargetTabWarning(
   if (warning) {
     logInfo(warning)
   }
-}
-
-async function loadOptionalLocalGrammarContributions(document: vscode.TextDocument) {
-  const stopwatch = startStopwatch()
-  const configPath = await tryResolveConfigPath(document)
-  if (!configPath) {
-    logInfo('No local package.json grammar config found for the active document.')
-    return []
-  }
-
-  logInfo(`Using local grammar config: ${configPath}`)
-  const grammars = await loadGrammarContributions(configPath)
-  logInfo(`Loaded local grammar config in ${formatDuration(stopwatch())}.`)
-  return grammars
 }

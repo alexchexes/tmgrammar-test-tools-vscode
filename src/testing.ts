@@ -1,12 +1,11 @@
 import * as path from 'node:path'
 import * as vscode from 'vscode'
-import { loadGrammarContributions, tryResolveConfigPath } from './grammarConfig'
+import { loadDocumentGrammarSources } from './documentGrammarSources'
 import {
   buildDetailedGrammarSourceEntries,
   buildGrammarSourceSet,
   SourcedGrammarContribution
 } from './grammarSources'
-import { loadProviderGrammarContributions } from './grammarProvider'
 import { loadInstalledGrammarContributions } from './installedGrammars'
 import { formatDuration, logError, logInfo, logRunBoundary, logWarn, startStopwatch } from './log'
 import { consumeRunScopedResolutionWarningNotification } from './runners/resolveRunnerNotifications'
@@ -40,7 +39,8 @@ const TEST_CONTROLLER_LABEL = 'TM Grammar Test Tools'
 
 interface TestRunExecutionContext {
   installedGrammars?: readonly GrammarContribution[]
-  localGrammarLoads: Map<string, Promise<GrammarContribution[]>>
+  configLoads: Map<string, Promise<GrammarContribution[]>>
+  explicitGrammarLoads: Map<string, Promise<GrammarContribution[]>>
   providerGrammarLoads: Map<string, Promise<GrammarContribution[]>>
   registries: Map<string, GrammarTestRegistry>
   shownResolutionNotificationKeys: Set<string>
@@ -475,7 +475,8 @@ async function refreshDocumentTests(
 
 function createTestRunExecutionContext(): TestRunExecutionContext {
   return {
-    localGrammarLoads: new Map(),
+    configLoads: new Map(),
+    explicitGrammarLoads: new Map(),
     providerGrammarLoads: new Map(),
     registries: new Map(),
     shownResolutionNotificationKeys: new Set()
@@ -521,40 +522,35 @@ async function loadTestContext(
     logInfo('The active test file is outside the current workspace; using only global/default tmGrammarTestTools settings.')
   }
 
-  const localConfigStopwatch = startStopwatch()
-  const localGrammars = await loadOptionalLocalGrammarContributions(document, executionContext)
-  if (localGrammars.length > 0) {
-    logInfo(`Testing loaded local grammar config in ${formatDuration(localConfigStopwatch())}.`)
-  }
-
   const header = parseHeaderLine(document.lineAt(0).text)
-  const providerGrammars = await loadProviderGrammarContributions(
+  const documentGrammarSources = await loadDocumentGrammarSources(
     document,
     header.scopeName,
-    executionContext.providerGrammarLoads
+    {
+      configLoads: executionContext.configLoads,
+      explicitGrammarLoads: executionContext.explicitGrammarLoads,
+      providerLoads: executionContext.providerGrammarLoads
+    }
   )
   const installedGrammarStopwatch = startStopwatch()
   const installedGrammars = autoLoadInstalledGrammars
     ? (executionContext.installedGrammars ??= loadInstalledGrammarContributions())
     : []
-  const grammarSources = buildGrammarSourceSet(
-    installedGrammars,
-    localGrammars,
-    providerGrammars,
-    autoLoadInstalledGrammars
-  )
+  const unresolvedSourcedGrammars = [
+    ...buildDetailedGrammarSourceEntries(installedGrammars, [], [], [], autoLoadInstalledGrammars),
+    ...documentGrammarSources.sourcedEntries
+  ]
+  const grammarSources = buildGrammarSourceSet(unresolvedSourcedGrammars)
 
   if (autoLoadInstalledGrammars) {
     logInfo(`Testing loaded installed grammar contributions in ${formatDuration(installedGrammarStopwatch())}.`)
   }
 
   logInfo(
-    `Testing grammar sources: installed=${grammarSources.installedCount}, local=${grammarSources.localCount}, provider=${grammarSources.providerCount}`
+    `Testing grammar sources: installed=${grammarSources.installedCount}, config=${grammarSources.configCount}, explicit=${grammarSources.explicitCount}, provider=${grammarSources.providerCount}`
   )
   if (logGrammarDetails) {
-    logDetailedGrammarSourceEntries(
-      buildDetailedGrammarSourceEntries(installedGrammars, localGrammars, providerGrammars, autoLoadInstalledGrammars)
-    )
+    logDetailedGrammarSourceEntries(unresolvedSourcedGrammars)
   }
   logInfo(`Resolved test context in ${formatDuration(stopwatch())}.`)
 
@@ -566,24 +562,6 @@ async function loadTestContext(
       scopeName: grammar.scopeName
     }))
   }
-}
-
-async function loadOptionalLocalGrammarContributions(
-  document: vscode.TextDocument,
-  executionContext: TestRunExecutionContext
-) {
-  const configPath = await tryResolveConfigPath(document)
-  if (!configPath) {
-    logInfo('No local package.json grammar config found for the test target document.')
-    return []
-  }
-
-  logInfo(`Using local grammar config for testing: ${configPath}`)
-
-  const cachedLoad =
-    executionContext.localGrammarLoads.get(configPath) ?? loadGrammarContributions(configPath)
-  executionContext.localGrammarLoads.set(configPath, cachedLoad)
-  return cachedLoad
 }
 
 function renderTestFailure(

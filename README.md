@@ -46,7 +46,7 @@ _GIF fallback for GitHub, which doesn't render `<video>`. [Link to mp4](https://
    - `Replace Line Assertions` fully replaces an existing line assertion block.
    - `Insert Range Assertions` generates assertions for the selected range or token at the cursor.
    - `... (Full)` / `... (Minimal)` variants override `tmGrammarTestTools.scopeMode` for that invocation.
-3. The extension loads grammars from installed VS Code contributions (when `tmGrammarTestTools.autoLoadInstalledGrammars` is enabled), the nearest or configured `package.json`, and optional [provider](#grammar-provider) output. It then tokenizes from the top of the syntax test up to each targeted source line and inserts or refreshes the assertion block under that line.
+3. The extension loads grammars from installed VS Code contributions (when `tmGrammarTestTools.autoLoadInstalledGrammars` is enabled), the nearest local grammar config when no explicit override matches, and any matching [grammar source rules](#grammar-sources). It then tokenizes from the top of the syntax test up to each targeted source line and inserts or refreshes the assertion block under that line.
 
 User-facing line and column numbers are 1-based unless explicitly noted otherwise.
 
@@ -216,12 +216,12 @@ Code Actions and CodeLens expose the safe `Insert` commands. The potentially des
 </details>
 
 - `tmGrammarTestTools.compactRanges` defaults to `true` and merges disjoint caret ranges when they share the same rendered scope list and the tmgrammar assertion syntax can represent the merge.
-- `tmGrammarTestTools.autoLoadInstalledGrammars` defaults to `true` and controls whether installed VS Code grammars are loaded before local and provider grammars.
+- `tmGrammarTestTools.autoLoadInstalledGrammars` defaults to `true` and controls whether installed VS Code grammars are loaded before project-local and configured grammar sources.
 - `tmGrammarTestTools.enableCodeActions` defaults to `true` and adds Code Actions for inserting assertions at the current cursor or selection, plus explicit line/range alternatives when useful.
 - `tmGrammarTestTools.enableCodeLens` defaults to `true` and adds source-line CodeLens commands that insert assertions for that line, switching between line and range behavior based on the current selection on that line.
 - `tmGrammarTestTools.hideCodeLensOnCommentLines` defaults to `true` and hides CodeLens on source lines that look like language comments according to the active language configuration, with the syntax-test header comment token used as a fallback.
-- `tmGrammarTestTools.configPath` points to the grammar package `package.json` when the nearest one is not the right source for the current syntax test.
-- `tmGrammarTestTools.grammarProvider.*` controls optional external grammar loading. See [Grammar Provider](#grammar-provider).
+- `tmGrammarTestTools.grammarSources` defines ordered grammar source rules. Each rule can use `configPath`, `grammars`, or `provider`, matched by file glob and/or language id first, with optional scope filtering once the target scope is known. See [Grammar Sources](#grammar-sources).
+- Deprecated `tmGrammarTestTools.configPath` and `tmGrammarTestTools.grammarProvider.*` settings are auto-migrated to `tmGrammarTestTools.grammarSources` when possible.
 - `tmGrammarTestTools.testDiscovery.include` / `exclude` optionally add workspace files to the Testing view by glob. Matching files are treated as candidate syntax tests and validated lazily when expanded or run, so use reasonably narrow patterns.
 
 - _Debugging_: `tmGrammarTestTools.logGrammarDetails` defaults to `false` and, when enabled, logs detailed grammar selection info in the Output panel. Assertion generation logs the actually used grammar scopes with source labels; test runs log the merged grammar load order.
@@ -250,34 +250,86 @@ The extension integrates with VS Code’s native Testing UI.
 The extension can load grammars from:
 
 - installed VS Code extensions (including built-in ones)
-- the nearest local `package.json`, or the one pointed to by `tmGrammarTestTools.configPath`
-- the optional [grammar provider](#grammar-provider) command
+- the nearest local grammar config with `contributes.grammars` when no explicit config rule overrides it
+- matching [grammar source rules](#grammar-sources), which can contribute a config file, explicit grammar paths, or provider output
 
 If your syntax test is not inside the grammar extension repo, the usual ways to point it at the right grammars are:
 
-- set `tmGrammarTestTools.configPath` to the `package.json` that contributes the relevant grammar
-- use a [grammar provider](#grammar-provider) when the needed grammars are generated, split across files, or not fully described by `package.json`
+- add a `configPath` rule when the nearest local grammar config is not the right source for the current file
+- add a `grammars` rule when you want runner-style explicit grammar paths
+- add a `provider` rule when the needed grammars are generated, split across files, or not fully described by a config file
 
 The loading rules are then:
 
-- When `tmGrammarTestTools.autoLoadInstalledGrammars` is `false`, installed VS Code grammars are skipped and only local `package.json` plus provider grammars are used.
-- For the same exact scope name, precedence follows that fixed load order: installed VS Code grammars first (when enabled) → then local `package.json` grammars → then provider grammars.
+- When `tmGrammarTestTools.autoLoadInstalledGrammars` is `false`, installed VS Code grammars are skipped.
+- Installed VS Code grammars load first when enabled.
+- If no matching `configPath` rule exists, the nearest local grammar config is loaded next as the default project-local source.
+- Matching `tmGrammarTestTools.grammarSources` rules are then applied in the order they appear in settings.
+- For the same exact scope name, later sources win because they are loaded later.
 - Injection grammars are additive. A local or provider injection grammar can extend a base grammar that comes from an installed or built-in VS Code extension, either by adding more specific scopes within existing content or by contributing injected regions.
-- If `tmGrammarTestTools.grammarProvider.command` is set, the extension runs it on each invocation and uses the returned grammar files for the current dump.
 
-## Grammar Provider
+## Grammar Sources
 
-You can configure a grammar provider via workspace, workspace-folder, or global `settings.json`. This is useful when the grammars you want to test are generated, split across files, or not fully described by a nearby `package.json` (for example, when the source grammar is in `.cson`).
+You can configure grammar sources via workspace, workspace-folder, or global `settings.json`.
+
+Each rule can match by:
+
+- `when.files`: a glob or list of globs
+- `when.languageIds`: a language id or list of language ids
+- `when.scopes`: an optional secondary filter used only after a target scope is already known
+
+Each rule must then define exactly one source mode:
+
+- `configPath`: load grammars from a config file with `contributes.grammars`
+- `grammars`: load one or more explicit grammar file paths directly
+- `provider`: run a command that prints grammar file paths for the active document
 
 Example usage:
 
 ```jsonc
 {
-  "tmGrammarTestTools.grammarProvider.command": "node buildAndExportGrammars.js",
-  "tmGrammarTestTools.grammarProvider.cwd": "${workspaceFolder}", // optional
-  "tmGrammarTestTools.grammarProvider.scopes": ["source.js"], // optional
+  "tmGrammarTestTools.grammarSources": [
+    {
+      "when": {
+        "files": ["spec/tmgrammar/**/*.php", "tmp/**/*.php"]
+      },
+      "configPath": "../language-php/package.json"
+    },
+    {
+      "when": {
+        "languageIds": "php"
+      },
+      "provider": {
+        "command": "node buildAndExportGrammars.js",
+        "cwd": "${workspaceFolder}",
+        "timeoutMs": 30000
+      }
+    },
+    {
+      "when": {
+        "files": "**/*.simple-poc"
+      },
+      "grammars": [
+        "fixtures/simple-grammar/syntaxes/simple-poc.tmLanguage.json"
+      ]
+    }
+  ]
 }
 ```
+
+Relative `configPath` and `grammars` entries resolve from the active document's workspace folder when one exists, and otherwise from the active document directory.
+
+Supported variables in `configPath` and `grammars` entries:
+
+- `${workspaceFolder}`
+- `${projectRoot}`
+- `${file}`
+- `${fileDirname}`
+- `${fileBasename}`
+
+### Provider Mode
+
+Use a `provider` rule when the grammars you want to test are generated, split across files, or not fully described by a nearby config file (for example, when the source grammar is in `.cson`).
 
 Provider command output can be either:
 
@@ -300,9 +352,9 @@ Example output shape:
 
 See a [small example provider](examples/grammar-provider/print-grammars.cjs) that prints a JSON array of relative grammar paths.
 
-Provider grammars participate in the normal load order described in [Grammar Loading](#grammar-loading): exact scope-name matches override earlier sources, while injection grammars remain additive.
+Provider rules participate in the normal load order described in [Grammar Loading](#grammar-loading): exact scope-name matches override earlier sources, while injection grammars remain additive.
 
-Supported variables in `tmGrammarTestTools.grammarProvider.command`:
+Supported variables in `provider.command`:
 
 - `${workspaceFolder}`
 - `${projectRoot}`
@@ -310,19 +362,19 @@ Supported variables in `tmGrammarTestTools.grammarProvider.command`:
 - `${fileDirname}`
 - `${fileBasename}`
 
-Supported variables in `tmGrammarTestTools.grammarProvider.cwd`:
+Supported variables in `provider.cwd`:
 
 - `${workspaceFolder}`
 - `${projectRoot}`
 - `${fileDirname}`
 
-If `tmGrammarTestTools.grammarProvider.scopes` is set, the provider runs only when the syntax-test header scope exactly matches one of the configured values. Leave it empty or unset to allow the provider for any scope.
+If `when.scopes` is set on a provider rule, the provider runs only when the resolved target scope exactly matches one of those configured values. Leave it empty or unset to allow the provider for any scope.
 
 If `${workspaceFolder}` is used in `command` or `cwd`, the active file must belong to a workspace folder.
 
 `${projectRoot}` resolves to the nearest ancestor of the active file that contains `package.json` or `.git`. If neither is found, it resolves to the directory containing the file.
 
-If `tmGrammarTestTools.grammarProvider.cwd` is empty or unset, the extension runs the provider command from the active document's workspace folder and falls back to `${projectRoot}` when the file is outside the workspace.
+If `provider.cwd` is empty or unset, the extension runs the provider command from the active document's workspace folder and falls back to `${projectRoot}` when the file is outside the workspace.
 
 `command` and `cwd` are resolved independently, so you can specify one in the workspace's `.vscode/settings.json` and the other in global `settings.json`, but in most cases it is reasonable to keep them together.
 

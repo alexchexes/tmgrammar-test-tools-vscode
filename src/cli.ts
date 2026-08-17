@@ -159,10 +159,9 @@ export async function runCli(argv: readonly string[]): Promise<CliOutput> {
   } else {
     logger.info('No grammar provider command configured for the CLI run.')
   }
-  const grammarSources = buildGrammarSourceSet([], localGrammars, providerGrammars, false)
-  const sourcedGrammars = await resolveSourcedGrammarEntries(
-    buildDetailedGrammarSourceEntries([], localGrammars, providerGrammars, false)
-  )
+  const unresolvedSourcedGrammars = buildDetailedGrammarSourceEntries([], localGrammars, [], providerGrammars, false)
+  const grammarSources = buildGrammarSourceSet(unresolvedSourcedGrammars)
+  const sourcedGrammars = await resolveSourcedGrammarEntries(unresolvedSourcedGrammars)
 
   if (grammarSources.grammars.length === 0) {
     throw new Error(
@@ -170,7 +169,7 @@ export async function runCli(argv: readonly string[]): Promise<CliOutput> {
     )
   }
   logger.info(
-    `Grammar sources: installed=${grammarSources.installedCount}, local=${grammarSources.localCount}, provider=${grammarSources.providerCount}`
+    `Grammar sources: installed=${grammarSources.installedCount}, config=${grammarSources.configCount}, explicit=${grammarSources.explicitCount}, provider=${grammarSources.providerCount}`
   )
   getEssentialGrammarSummaryLines(sourcedGrammars, header.scopeName, 'Use --log-level debug for the full trace.').forEach(
     (line) => logger.info(line)

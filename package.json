@@ -170,11 +170,112 @@
     "configuration": {
       "title": "TM Grammar Test Tools",
       "properties": {
+        "tmGrammarTestTools.grammarSources": {
+          "type": "array",
+          "default": [],
+          "scope": "resource",
+          "markdownDescription": "Ordered grammar source rules. Rules match `when.files` and `when.languageIds` first, then optionally `when.scopes` when a target scope is already known. Each rule must define exactly one source mode: `configPath`, `grammars`, or `provider`.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "when": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "files": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    ],
+                    "description": "Optional file glob or globs. Matches against the active file path and workspace-relative path."
+                  },
+                  "languageIds": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    ],
+                    "description": "Optional language id or language ids that must match the active document."
+                  },
+                  "scopes": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    ],
+                    "description": "Optional resolved scope filter, used only after a target scope is already known."
+                  }
+                }
+              },
+              "configPath": {
+                "type": "string",
+                "description": "Path to a grammar config file with contributes.grammars entries. Relative paths resolve from the active document's workspace folder and otherwise from the active document directory."
+              },
+              "grammars": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ],
+                "description": "Grammar file path or paths to append directly. Relative paths resolve from the active document's workspace folder and otherwise from the active document directory."
+              },
+              "provider": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "command"
+                ],
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "description": "Shell command that prints grammar file paths for the active document. Supports JSON output or newline-separated paths."
+                  },
+                  "cwd": {
+                    "type": "string",
+                    "description": "Optional working directory for the provider command. Supports ${projectRoot}, ${workspaceFolder}, and ${fileDirname}."
+                  },
+                  "timeoutMs": {
+                    "type": "number",
+                    "minimum": 1000,
+                    "description": "Timeout in milliseconds for the provider command."
+                  }
+                }
+              }
+            }
+          }
+        },
         "tmGrammarTestTools.configPath": {
           "type": "string",
           "default": "",
           "scope": "resource",
-          "description": "Optional path to the grammar package.json used to load TextMate grammars. Relative paths resolve from the active document's workspace folder."
+          "description": "Optional path to the grammar package.json used to load TextMate grammars. Relative paths resolve from the active document's workspace folder.",
+          "deprecationMessage": "Use tmGrammarTestTools.grammarSources instead. Existing values are migrated automatically when possible."
         },
         "tmGrammarTestTools.enableCodeActions": {
           "type": "boolean",
@@ -198,13 +299,15 @@
           "type": "string",
           "default": "",
           "scope": "resource",
-          "description": "Optional shell command that prints grammar file paths for the active document. Supports JSON output or newline-separated paths."
+          "description": "Optional shell command that prints grammar file paths for the active document. Supports JSON output or newline-separated paths.",
+          "deprecationMessage": "Use tmGrammarTestTools.grammarSources instead. Existing values are migrated automatically when possible."
         },
         "tmGrammarTestTools.grammarProvider.cwd": {
           "type": "string",
           "default": "",
           "scope": "resource",
-          "description": "Working directory used when invoking tmGrammarTestTools.grammarProvider.command. Leave empty to use the active document's workspace folder and fall back to project root when the file is outside the workspace. If explicitly set to ${workspaceFolder}, the active file must belong to a workspace folder. Supports ${projectRoot}, ${workspaceFolder}, and ${fileDirname}."
+          "description": "Working directory used when invoking tmGrammarTestTools.grammarProvider.command. Leave empty to use the active document's workspace folder and fall back to project root when the file is outside the workspace. If explicitly set to ${workspaceFolder}, the active file must belong to a workspace folder. Supports ${projectRoot}, ${workspaceFolder}, and ${fileDirname}.",
+          "deprecationMessage": "Use tmGrammarTestTools.grammarSources instead. Existing values are migrated automatically when possible."
         },
         "tmGrammarTestTools.grammarProvider.scopes": {
           "type": "array",
@@ -213,14 +316,16 @@
           "items": {
             "type": "string"
           },
-          "description": "Optional list of exact syntax-test header scopes for which tmGrammarTestTools.grammarProvider.command should run. Leave empty to allow the provider for any scope."
+          "description": "Optional list of exact syntax-test header scopes for which tmGrammarTestTools.grammarProvider.command should run. Leave empty to allow the provider for any scope.",
+          "deprecationMessage": "Use tmGrammarTestTools.grammarSources instead. Existing values are migrated automatically when possible."
         },
         "tmGrammarTestTools.grammarProvider.timeoutMs": {
           "type": "number",
           "default": 30000,
           "minimum": 1000,
           "scope": "resource",
-          "description": "Timeout in milliseconds for tmGrammarTestTools.grammarProvider.command."
+          "description": "Timeout in milliseconds for tmGrammarTestTools.grammarProvider.command.",
+          "deprecationMessage": "Use tmGrammarTestTools.grammarSources instead. Existing values are migrated automatically when possible."
         },
         "tmGrammarTestTools.scopeMode": {
           "type": "string",
@@ -254,7 +359,7 @@
           "type": "boolean",
           "default": true,
           "scope": "resource",
-          "description": "When enabled, automatically load grammars contributed by installed VS Code extensions, including built-in ones, before local package.json and provider grammars."
+          "description": "When enabled, automatically load grammars contributed by installed VS Code extensions, including built-in ones, before project-local and configured grammar sources."
         },
         "tmGrammarTestTools.compactRanges": {
           "type": "boolean",

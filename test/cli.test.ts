@@ -485,7 +485,7 @@ test('CLI info log level writes diagnostics to stderr while keeping stdout JSON 
     [{ documentLine: 4, kind: 'line' }]
   )
   assert.match(stderr, /\[info\] Parsed syntax test header with scope source\.simple-poc/)
-  assert.match(stderr, /\[info\] Base grammar winner: source\.simple-poc -> \[local\]/)
+  assert.match(stderr, /\[info\] Base grammar winner: source\.simple-poc -> \[config\]/)
 })
 
 test('CLI debug log level writes effective grammar usage trace to stderr', async () => {

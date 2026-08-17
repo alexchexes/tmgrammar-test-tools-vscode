@@ -1,57 +1,38 @@
 import * as vscode from 'vscode'
-import { resolveProjectRoot } from './grammarConfig'
 import { GrammarContribution } from './grammarTypes'
 import { formatDuration, logInfo, startStopwatch } from './log'
-import { normalizeConfiguredProviderScopes, shouldRunProviderForScope } from './providerScopeFilter'
-import {
-  buildProviderLoadCacheKey,
-  ProviderTemplateContext,
-  resolveCommandTemplate,
-  resolveProviderCwdTemplate
-} from './providerTemplates'
+import { buildProviderLoadCacheKey, ProviderTemplateContext, resolveCommandTemplate, resolveProviderCwdTemplate } from './providerTemplates'
 import { runGrammarProvider } from './providerRunner'
-import { getEffectiveTmGrammarConfiguration, getEffectiveWorkspaceFolder } from './settings'
 
-export async function loadProviderGrammarContributions(
-  document: vscode.TextDocument,
+export interface ConfiguredGrammarProviderRule {
+  command: string
+  cwd?: string
+  timeoutMs: number
+}
+
+export async function loadProviderGrammarContributionsForRule(
+  _document: vscode.TextDocument,
   targetScopeName: string,
+  providerRule: ConfiguredGrammarProviderRule,
+  context: ProviderTemplateContext,
   cache?: Map<string, Promise<GrammarContribution[]>>
 ): Promise<GrammarContribution[]> {
+  void _document
   const stopwatch = startStopwatch()
-  const configuration = getEffectiveTmGrammarConfiguration(document)
-  const configuredCommand = configuration.get<string>('grammarProvider.command')?.trim()
+  const resolvedCommand = resolveCommandTemplate(providerRule.command, context)
+  const resolvedCwd = resolveProviderCwdTemplate(context, providerRule.cwd)
+  const cacheKey = buildProviderLoadCacheKey(resolvedCommand, resolvedCwd, targetScopeName, providerRule.timeoutMs)
 
-  if (!configuredCommand) {
-    logInfo('No grammar provider command configured for the active document.')
-    return []
-  }
-
-  const configuredScopes = normalizeConfiguredProviderScopes(configuration.get<readonly string[]>('grammarProvider.scopes'))
-  if (!shouldRunProviderForScope(targetScopeName, configuredScopes)) {
-    logInfo(
-      `Skipping grammar provider for scope ${targetScopeName} because grammarProvider.scopes is limited to: ${(configuredScopes ?? []).join(', ')}`
-    )
-    return []
-  }
-
-  const projectRoot = await resolveProjectRoot(document)
-  const configuredCwd = configuration.get<string>('grammarProvider.cwd')?.trim()
-  const timeoutMs = configuration.get<number>('grammarProvider.timeoutMs') ?? 30000
-  const context = toProviderTemplateContext(document, projectRoot)
-  const resolvedCommand = resolveCommandTemplate(configuredCommand, context)
-  const resolvedCwd = resolveProviderCwdTemplate(context, configuredCwd)
-  const cacheKey = buildProviderLoadCacheKey(resolvedCommand, resolvedCwd, targetScopeName, timeoutMs)
-
-  logInfo(`Resolved project root: ${projectRoot}`)
+  logInfo(`Resolved project root: ${context.projectRoot}`)
   logInfo(`Running grammar provider command: ${resolvedCommand}`)
   logInfo(`Grammar provider cwd: ${resolvedCwd}`)
 
   const loadPromise =
     cache?.get(cacheKey) ??
     runGrammarProvider(context, {
-      command: configuredCommand,
-      cwd: configuredCwd,
-      timeoutMs
+      command: providerRule.command,
+      cwd: providerRule.cwd,
+      timeoutMs: providerRule.timeoutMs
     })
 
   cache?.set(cacheKey, loadPromise)
@@ -67,12 +48,4 @@ export async function loadProviderGrammarContributions(
   logInfo(`Grammar provider completed in ${formatDuration(stopwatch())}.`)
 
   return grammars
-}
-
-function toProviderTemplateContext(document: vscode.TextDocument, projectRoot: string): ProviderTemplateContext {
-  return {
-    filePath: document.uri.fsPath,
-    projectRoot,
-    workspaceFolder: getEffectiveWorkspaceFolder(document)?.uri.fsPath
-  }
 }

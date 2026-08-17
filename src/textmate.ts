@@ -12,7 +12,7 @@ export interface TokenizationTraceGrammarEntry {
   language?: string
   path: string
   scopeName: string
-  source?: 'installed' | 'local' | 'provider'
+  source?: 'config' | 'explicit' | 'installed' | 'provider'
 }
 
 export interface TokenizationLoadedScopeTrace {
@@ -445,5 +445,5 @@ function toTraceGrammarEntry(grammar: ResolvedGrammarContribution): Tokenization
 
 type ResolvedGrammarContribution = GrammarContribution & {
   scopeName: string
-  source?: 'installed' | 'local' | 'provider'
+  source?: 'config' | 'explicit' | 'installed' | 'provider'
 }
